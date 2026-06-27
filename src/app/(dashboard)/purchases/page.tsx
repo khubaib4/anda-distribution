@@ -123,7 +123,7 @@ export default function PurchasesPage() {
                 >
                   <option value="">All</option>
                   {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.supplier_id} value={s.supplier_id}>{s.name}</option>
                   ))}
                 </select>
               </div>

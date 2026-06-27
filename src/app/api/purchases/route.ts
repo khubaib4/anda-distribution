@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { generateInvoiceNumber } from '@/lib/utils'
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -91,7 +90,18 @@ export async function POST(request: Request) {
     }
   }
 
-  const invoice_number = generateInvoiceNumber('PUR')
+  const { count, error: countError } = await supabase
+    .from('purchases')
+    .select('*', { count: 'exact', head: true })
+
+  if (countError) {
+    return NextResponse.json(
+      { error: countError.message },
+      { status: 500 }
+    )
+  }
+
+  const invoice_number = `PUR-${String((count ?? 0) + 1).padStart(4, '0')}`
 
   // Insert purchase
   const { data: purchase, error: purchaseError } = await supabase

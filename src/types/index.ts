@@ -206,3 +206,37 @@ export interface LedgerEntry {
   direction: 'debit' | 'credit'
   invoice_number?: string | null
 }
+
+export interface SupplierPayment {
+  id:             string
+  supplier_id:    string
+  amount_paisa:   number
+  payment_date:   string
+  payment_method: PaymentMethod | null
+  reference:      string | null
+  notes:          string | null
+  created_by:     string | null
+  created_at:     string
+}
+
+export interface SupplierBalance {
+  supplier_id:          string
+  name:                 string
+  phone:                string | null
+  is_active:            boolean
+  total_purchases_paisa: number
+  total_paid_paisa:     number
+  balance_paisa:        number
+}
+
+export interface SupplierLedgerEntry {
+  id:              string
+  entry_type:      'purchase' | 'payment'
+  entry_date:      string
+  description:     string
+  debit_paisa:     number
+  credit_paisa:    number
+  running_balance: number
+  invoice_number?: string
+  payment_method?: string
+}

@@ -93,7 +93,7 @@ export default function NewPurchasePage() {
     setSaving(true)
 
     try {
-      const selectedSupplier = suppliers.find(s => s.id === supplierId)
+      const selectedSupplier = suppliers.find(s => s.supplier_id === supplierId)
 
       const payload = {
         supplier_id:       supplierId || null,
@@ -168,7 +168,7 @@ export default function NewPurchasePage() {
               {suppliers
                 .filter(s => s.is_active)
                 .map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.supplier_id} value={s.supplier_id}>{s.name}</option>
                 ))}
             </select>
           </div>

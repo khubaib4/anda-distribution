@@ -11,6 +11,7 @@ import {
   Users,
   Receipt,
   Wallet,
+  BookOpen,
   BarChart3,
   LogOut,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/customers',  label: 'Customers',  icon: Users          },
   { href: '/expenses',   label: 'Expenses',   icon: Receipt        },
   { href: '/capital',    label: 'Capital',    icon: Wallet         },
+  { href: '/cash-book',  label: 'Cash Book',  icon: BookOpen       },
   { href: '/reports',    label: 'Reports',    icon: BarChart3      },
 ]
 

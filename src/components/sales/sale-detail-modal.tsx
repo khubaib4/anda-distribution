@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Download } from 'lucide-react'
 import Link from 'next/link'
 import {
   formatPKR,
@@ -10,6 +10,7 @@ import {
   paymentStatusClass,
   paymentStatusLabel,
 } from '@/lib/utils'
+import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import type { Sale } from '@/types'
 
 interface Props {
@@ -268,6 +269,19 @@ export default function SaleDetailModal({
             </>
           )}
         </div>
+
+        {sale && !loading && (
+          <div className="modal-footer flex-shrink-0 border-t border-stone-100">
+            <button
+              type="button"
+              onClick={() => generateInvoicePDF(sale)}
+              className="btn-secondary w-full"
+            >
+              <Download className="w-4 h-4" />
+              Download Invoice
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

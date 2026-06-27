@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { Supplier } from '@/types'
+import type { SupplierBalance } from '@/types'
 
 export function useSuppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierBalance[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
 
@@ -26,10 +26,10 @@ export function useSuppliers() {
   useEffect(() => { fetch() }, [fetch])
 
   async function createSupplier(payload: {
-    name: string
-    phone?: string
+    name:     string
+    phone?:   string
     address?: string
-    notes?: string
+    notes?:   string
   }) {
     const res = await window.fetch('/api/suppliers', {
       method:  'POST',
@@ -39,7 +39,7 @@ export function useSuppliers() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Failed to create supplier')
     await fetch()
-    return data as Supplier
+    return data
   }
 
   async function updateSupplier(
@@ -60,8 +60,15 @@ export function useSuppliers() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Failed to update supplier')
     await fetch()
-    return data as Supplier
+    return data
   }
 
-  return { suppliers, loading, error, refetch: fetch, createSupplier, updateSupplier }
+  return {
+    suppliers,
+    loading,
+    error,
+    refetch: fetch,
+    createSupplier,
+    updateSupplier,
+  }
 }
