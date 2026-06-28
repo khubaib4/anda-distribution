@@ -14,7 +14,12 @@ import {
   formatDate,
   todayString,
 } from '@/lib/utils'
-import type { SupplierBalance, SupplierLedgerEntry } from '@/types'
+import type { SupplierBalance, SupplierLedgerEntry, BankAccountBalance } from '@/types'
+
+function accountLabel(account: BankAccountBalance): string {
+  if (account.nickname) return account.nickname
+  return `${account.bank_name} — ${account.account_holder}`
+}
 
 interface LedgerData {
   ledger:  SupplierLedgerEntry[]
@@ -40,7 +45,9 @@ export default function SupplierDetailPage({
 
   // Payment form
   const [payAmount,    setPayAmount]    = useState('')
-  const [payMethod,    setPayMethod]    = useState('cash')
+  const [payMethod,        setPayMethod]        = useState('cash')
+  const [payBankAccountId, setPayBankAccountId] = useState('')
+  const [bankAccounts,     setBankAccounts]     = useState<BankAccountBalance[]>([])
   const [payDate,      setPayDate]      = useState(todayString())
   const [payReference, setPayReference] = useState('')
   const [payNotes,     setPayNotes]     = useState('')
@@ -72,6 +79,15 @@ export default function SupplierDetailPage({
     loadLedger()
   }, [id])
 
+  useEffect(() => {
+    window.fetch('/api/accounts')
+      .then(r => r.json())
+      .then((data: BankAccountBalance[]) =>
+        setBankAccounts(data.filter(a => a.is_active))
+      )
+      .catch(console.error)
+  }, [])
+
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()
     setPayError(null)
@@ -94,6 +110,9 @@ export default function SupplierDetailPage({
           payment_method: payMethod,
           reference:      payReference || null,
           notes:          payNotes     || null,
+          ...(payMethod === 'bank_transfer' && payBankAccountId
+            ? { bank_account_id: payBankAccountId }
+            : {}),
         }),
       })
 
@@ -107,6 +126,7 @@ export default function SupplierDetailPage({
       setPayAmount('')
       setPayReference('')
       setPayNotes('')
+      setPayBankAccountId('')
       setShowPayForm(false)
       await Promise.all([loadSupplier(), loadLedger()])
     } catch {
@@ -235,7 +255,12 @@ export default function SupplierDetailPage({
               <select
                 className="select"
                 value={payMethod}
-                onChange={e => setPayMethod(e.target.value)}
+                onChange={e => {
+                  setPayMethod(e.target.value)
+                  if (e.target.value !== 'bank_transfer') {
+                    setPayBankAccountId('')
+                  }
+                }}
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank transfer</option>
@@ -243,6 +268,27 @@ export default function SupplierDetailPage({
                 <option value="jazzcash">JazzCash</option>
               </select>
             </div>
+
+            {payMethod === 'bank_transfer' && (
+              <div className="form-group">
+                <label className="label">Bank account</label>
+                <select
+                  className="select"
+                  value={payBankAccountId}
+                  onChange={e => setPayBankAccountId(e.target.value)}
+                >
+                  <option value="">Select account…</option>
+                  {bankAccounts.map(account => (
+                    <option
+                      key={account.bank_account_id}
+                      value={account.bank_account_id}
+                    >
+                      {accountLabel(account)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="label">Reference / transaction ID</label>

@@ -111,6 +111,8 @@ export interface Sale {
   invoice_number: string | null
   notes: string | null
   payment_status: PaymentStatus
+  due_date: string | null
+  amount_paid_paisa: number
   created_by: string | null
   created_at: string
   updated_at: string
@@ -239,4 +241,43 @@ export interface SupplierLedgerEntry {
   running_balance: number
   invoice_number?: string
   payment_method?: string
+}
+
+export interface BankAccount {
+  id:             string
+  bank_name:      string
+  account_holder: string
+  account_number: string | null
+  nickname:       string | null
+  is_active:      boolean
+  created_by:     string | null
+  created_at:     string
+  updated_at:     string
+}
+
+export interface BankAccountBalance {
+  bank_account_id:           string
+  bank_name:                 string
+  account_holder:            string
+  account_number:            string | null
+  nickname:                  string | null
+  is_active:                 boolean
+  total_received_paisa:      number
+  total_supplier_paid_paisa: number
+  total_expenses_paisa:      number
+  balance_paisa:             number
+}
+
+export interface OverdueSale {
+  sale_id:         string
+  invoice_number:  string | null
+  sale_date:       string
+  due_date:        string
+  days_overdue:    number
+  payment_status:  PaymentStatus
+  customer_id:     string
+  contact_name:    string
+  business_name:   string | null
+  phone:           string | null
+  balance_paisa:   number
 }

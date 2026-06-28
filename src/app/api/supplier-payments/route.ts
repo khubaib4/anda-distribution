@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     payment_method,
     reference,
     notes,
+    bank_account_id,
   } = body
 
   if (!supplier_id) {
@@ -58,11 +59,12 @@ export async function POST(request: Request) {
     .insert({
       supplier_id,
       amount_paisa,
-      payment_date:   payment_date   || new Date().toISOString().split('T')[0],
-      payment_method: payment_method || null,
-      reference:      reference      || null,
-      notes:          notes          || null,
-      created_by:     user?.id       || null,
+      payment_date:    payment_date    || new Date().toISOString().split('T')[0],
+      payment_method:  payment_method  || null,
+      reference:       reference       || null,
+      notes:           notes           || null,
+      bank_account_id: bank_account_id || null,
+      created_by:      user?.id        || null,
     })
     .select()
     .single()

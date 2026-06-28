@@ -59,6 +59,9 @@ interface DashboardData {
       price_per_tray_paisa: number
     }>
   }>
+  alerts: {
+    overdue_count: number
+  }
 }
 
 export default function DashboardPage() {
@@ -141,6 +144,28 @@ export default function DashboardPage() {
                          underline underline-offset-2"
             >
               View stock <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Payment alerts */}
+      {(data?.alerts.overdue_count ?? 0) > 0 && (
+        <div className="rounded-lg px-4 py-3 border text-sm flex items-start
+                         gap-3 bg-amber-50 border-amber-200 text-amber-800">
+          <span className="text-base flex-shrink-0">⚠</span>
+          <div>
+            <p className="font-medium">
+              {data?.alerts.overdue_count} overdue payment
+              {(data?.alerts.overdue_count ?? 0) !== 1 ? 's' : ''} — customers
+              who haven&apos;t paid by due date
+            </p>
+            <Link
+              href="/alerts"
+              className="inline-flex items-center gap-1 mt-1 font-medium
+                         underline underline-offset-2"
+            >
+              View alerts <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>

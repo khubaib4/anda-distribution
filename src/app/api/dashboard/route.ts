@@ -121,6 +121,14 @@ export async function GET() {
     ),
   }))
 
+  const { count: overdueCount, error: overdueError } = await supabase
+    .from('overdue_sales')
+    .select('*', { count: 'exact', head: true })
+
+  if (overdueError) {
+    return NextResponse.json({ error: overdueError.message }, { status: 500 })
+  }
+
   return NextResponse.json({
     today: {
       sales_total:    todaySalesTotal,
@@ -144,5 +152,8 @@ export async function GET() {
       total_trays:  totalStockTrays,
     },
     recent_sales: recentSalesEnriched,
+    alerts: {
+      overdue_count: overdueCount ?? 0,
+    },
   })
 }

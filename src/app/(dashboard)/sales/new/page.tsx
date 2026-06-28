@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
@@ -10,7 +10,13 @@ import { useCurrentStock } from '@/hooks/use-stock'
 import SaleItemRow, {
   type SaleItemDraft,
 } from '@/components/sales/sale-item-row'
-import { todayString, formatPKR, formatQty } from '@/lib/utils'
+import { todayString, formatPKR, formatQty, toPaisa } from '@/lib/utils'
+import type { BankAccountBalance } from '@/types'
+
+function accountLabel(account: BankAccountBalance): string {
+  if (account.nickname) return account.nickname
+  return `${account.bank_name} — ${account.account_holder}`
+}
 
 function newItem(): SaleItemDraft {
   return {
@@ -34,6 +40,13 @@ export default function NewSalePage() {
   const [paymentStatus, setPaymentStatus] = useState<
     'paid' | 'partial' | 'unpaid'
   >('unpaid')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [bankAccountId, setBankAccountId] = useState('')
+  const [dueDate,           setDueDate]           = useState('')
+  const [partialAmount,     setPartialAmount]     = useState('')
+  const [partialMethod,     setPartialMethod]     = useState('cash')
+  const [partialBankAccountId, setPartialBankAccountId] = useState('')
+  const [bankAccounts,  setBankAccounts]  = useState<BankAccountBalance[]>([])
   const [notes,         setNotes]         = useState('')
 
   // Line items
@@ -42,6 +55,15 @@ export default function NewSalePage() {
   // UI state
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
+
+  useEffect(() => {
+    window.fetch('/api/accounts')
+      .then(r => r.json())
+      .then((data: BankAccountBalance[]) =>
+        setBankAccounts(data.filter(a => a.is_active))
+      )
+      .catch(console.error)
+  }, [])
 
   // Item handlers
   const handleItemChange = useCallback(
@@ -113,19 +135,45 @@ export default function NewSalePage() {
       }
     }
 
+    if (paymentStatus === 'partial') {
+      const paid = parseFloat(partialAmount)
+      if (!partialAmount || isNaN(paid) || paid <= 0) {
+        setError('Amount paid is required for partial payment')
+        return
+      }
+      if (toPaisa(paid) >= grandTotalPaisa) {
+        setError('Partial amount must be less than the sale total')
+        return
+      }
+    }
+
     setSaving(true)
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         customer_id:    customerId,
         sale_date:      saleDate,
         payment_status: paymentStatus,
         notes:          notes || null,
+        due_date:       dueDate || null,
         items: items.map(item => ({
           egg_category_id:      item.egg_category_id,
           quantity_trays:       item.quantity_peti * 12 + item.quantity_tray,
           price_per_tray_paisa: item.price_per_tray_paisa,
         })),
+      }
+
+      if (paymentStatus === 'paid') {
+        payload.payment_method = paymentMethod
+        if (paymentMethod === 'bank_transfer' && bankAccountId) {
+          payload.bank_account_id = bankAccountId
+        }
+      } else if (paymentStatus === 'partial') {
+        payload.amount_paid_paisa = toPaisa(partialAmount)
+        payload.payment_method = partialMethod
+        if (partialMethod === 'bank_transfer' && partialBankAccountId) {
+          payload.bank_account_id = partialBankAccountId
+        }
       }
 
       const res = await fetch('/api/sales', {
@@ -283,14 +331,140 @@ export default function NewSalePage() {
               }
             >
               <option value="unpaid">Unpaid — collect later</option>
+              <option value="partial">Partial payment</option>
               <option value="paid">Paid — cash on delivery</option>
             </select>
           </div>
 
-          {paymentStatus === 'paid' && grandTotalPaisa > 0 && (
-            <p className="text-sm text-success">
-              ✓ Full amount {formatPKR(grandTotalPaisa)} collected
-            </p>
+          {paymentStatus === 'unpaid' && (
+            <div className="form-group">
+              <label className="label">Payment due date</label>
+              <input
+                type="date"
+                className="input"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+              />
+            </div>
+          )}
+
+          {paymentStatus === 'partial' && (
+            <>
+              <div className="form-group">
+                <label className="label">
+                  Amount paid (₨) <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  placeholder="0.00"
+                  value={partialAmount}
+                  onChange={e => setPartialAmount(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Payment method</label>
+                <select
+                  className="select"
+                  value={partialMethod}
+                  onChange={e => {
+                    setPartialMethod(e.target.value)
+                    if (e.target.value !== 'bank_transfer') {
+                      setPartialBankAccountId('')
+                    }
+                  }}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="easypaisa">Easypaisa</option>
+                  <option value="jazzcash">JazzCash</option>
+                </select>
+              </div>
+
+              {partialMethod === 'bank_transfer' && (
+                <div className="form-group">
+                  <label className="label">Bank account</label>
+                  <select
+                    className="select"
+                    value={partialBankAccountId}
+                    onChange={e => setPartialBankAccountId(e.target.value)}
+                  >
+                    <option value="">Select account…</option>
+                    {bankAccounts.map(account => (
+                      <option
+                        key={account.bank_account_id}
+                        value={account.bank_account_id}
+                      >
+                        {accountLabel(account)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="label">Payment due date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {paymentStatus === 'paid' && (
+            <>
+              <div className="form-group">
+                <label className="label">Payment method</label>
+                <select
+                  className="select"
+                  value={paymentMethod}
+                  onChange={e => {
+                    setPaymentMethod(e.target.value)
+                    if (e.target.value !== 'bank_transfer') {
+                      setBankAccountId('')
+                    }
+                  }}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="easypaisa">Easypaisa</option>
+                  <option value="jazzcash">JazzCash</option>
+                </select>
+              </div>
+
+              {paymentMethod === 'bank_transfer' && (
+                <div className="form-group">
+                  <label className="label">Bank account</label>
+                  <select
+                    className="select"
+                    value={bankAccountId}
+                    onChange={e => setBankAccountId(e.target.value)}
+                  >
+                    <option value="">Select account…</option>
+                    {bankAccounts.map(account => (
+                      <option
+                        key={account.bank_account_id}
+                        value={account.bank_account_id}
+                      >
+                        {accountLabel(account)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {grandTotalPaisa > 0 && (
+                <p className="text-sm text-success">
+                  ✓ Full amount {formatPKR(grandTotalPaisa)} collected
+                </p>
+              )}
+            </>
           )}
         </div>
 

@@ -40,15 +40,16 @@ export function useExpenses(filters: Filters = {}) {
   useEffect(() => { fetch() }, [fetch])
 
   async function createExpense(payload: {
-    category_id:  string
-    amount_paisa: number
-    expense_date: string
-    description:  string
-    vehicle?:     string
-    odometer_km?: number
-    worker_name?: string
-    labor_type?:  string
-    notes?:       string
+    category_id:     string
+    amount_paisa:    number
+    expense_date:    string
+    description:     string
+    vehicle?:        string
+    odometer_km?:    number
+    worker_name?:    string
+    labor_type?:     string
+    notes?:          string
+    bank_account_id?: string
   }) {
     const res = await window.fetch('/api/expenses', {
       method:  'POST',

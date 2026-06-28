@@ -64,6 +64,10 @@ export async function POST(request: Request) {
     customer_id,
     sale_date,
     payment_status,
+    payment_method,
+    bank_account_id,
+    due_date,
+    amount_paid_paisa,
     notes,
     items,
   } = body
@@ -143,9 +147,11 @@ export async function POST(request: Request) {
       customer_id,
       sale_date,
       invoice_number,
-      notes:          notes          || null,
-      payment_status: payment_status || 'unpaid',
-      created_by:     user?.id       || null,
+      notes:             notes             || null,
+      payment_status:    payment_status    || 'unpaid',
+      due_date:          due_date          || null,
+      amount_paid_paisa: amount_paid_paisa ?? 0,
+      created_by:        user?.id          || null,
     })
     .select()
     .single()
@@ -206,6 +212,62 @@ export async function POST(request: Request) {
       { error: movementsError.message },
       { status: 500 }
     )
+  }
+
+  const totalPaisa = items.reduce(
+    (sum: number, item: {
+      quantity_trays: number
+      price_per_tray_paisa: number
+    }) => sum + item.quantity_trays * item.price_per_tray_paisa,
+    0
+  )
+
+  if (payment_status === 'paid') {
+    const { error: paymentError } = await supabase
+      .from('customer_payments')
+      .insert({
+        customer_id,
+        amount_paisa:    totalPaisa,
+        payment_date:    sale_date,
+        payment_method:  payment_method  || null,
+        bank_account_id: bank_account_id || null,
+        notes:           `Payment for ${invoice_number}`,
+        created_by:      user?.id        || null,
+      })
+
+    if (paymentError) {
+      await supabase.from('sales').delete().eq('id', sale.id)
+      return NextResponse.json(
+        { error: paymentError.message },
+        { status: 500 }
+      )
+    }
+  }
+
+  if (
+    payment_status === 'partial' &&
+    amount_paid_paisa &&
+    amount_paid_paisa > 0
+  ) {
+    const { error: paymentError } = await supabase
+      .from('customer_payments')
+      .insert({
+        customer_id,
+        amount_paisa:    amount_paid_paisa,
+        payment_date:    sale_date,
+        payment_method:  payment_method  || null,
+        bank_account_id: bank_account_id || null,
+        notes:           `Partial payment for ${invoice_number}`,
+        created_by:      user?.id        || null,
+      })
+
+    if (paymentError) {
+      await supabase.from('sales').delete().eq('id', sale.id)
+      return NextResponse.json(
+        { error: paymentError.message },
+        { status: 500 }
+      )
+    }
   }
 
   return NextResponse.json(sale, { status: 201 })

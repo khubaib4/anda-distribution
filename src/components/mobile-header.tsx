@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -15,6 +15,8 @@ import {
   Receipt,
   Wallet,
   BookOpen,
+  BellRing,
+  Landmark,
   BarChart3,
   LogOut,
 } from 'lucide-react'
@@ -31,6 +33,8 @@ const navItems = [
   { href: '/expenses',   label: 'Expenses',   icon: Receipt        },
   { href: '/capital',    label: 'Capital',    icon: Wallet         },
   { href: '/cash-book',  label: 'Cash Book',  icon: BookOpen       },
+  { href: '/alerts',     label: 'Alerts',     icon: BellRing       },
+  { href: '/accounts',   label: 'Accounts',   icon: Landmark       },
   { href: '/reports',    label: 'Reports',    icon: BarChart3      },
 ]
 
@@ -44,6 +48,14 @@ export default function MobileHeader() {
   const pathname         = usePathname()
   const router           = useRouter()
   const supabase         = createClient()
+  const [overdueCount, setOverdueCount] = useState(0)
+
+  useEffect(() => {
+    window.fetch('/api/alerts')
+      .then(r => r.json())
+      .then(d => setOverdueCount(d.counts?.overdue ?? 0))
+      .catch(console.error)
+  }, [pathname])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -123,7 +135,13 @@ export default function MobileHeader() {
                         : 'text-stone-400 hover:text-white hover:bg-stone-800',
                     ].join(' ')}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="relative flex-shrink-0">
+                      <Icon className="w-4 h-4" />
+                      {href === '/alerts' && overdueCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2
+                                         bg-red-500 rounded-full" />
+                      )}
+                    </span>
                     {label}
                   </Link>
                 )

@@ -1,32 +1,42 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useExpenseCategories } from '@/hooks/use-expenses'
 import { todayString, toPaisa } from '@/lib/utils'
+import type { BankAccountBalance } from '@/types'
 
 interface Props {
   onSubmit: (values: {
-    category_id:  string
-    amount_paisa: number
-    expense_date: string
-    description:  string
-    vehicle?:     string
-    odometer_km?: number
-    worker_name?: string
-    labor_type?:  string
-    notes?:       string
+    category_id:     string
+    amount_paisa:    number
+    expense_date:    string
+    description:     string
+    vehicle?:        string
+    odometer_km?:    number
+    worker_name?:    string
+    labor_type?:     string
+    notes?:          string
+    bank_account_id?: string
   }) => Promise<void>
   onCancel: () => void
+}
+
+function accountLabel(account: BankAccountBalance): string {
+  if (account.nickname) return account.nickname
+  return `${account.bank_name} — ${account.account_holder}`
 }
 
 export default function ExpenseForm({ onSubmit, onCancel }: Props) {
   const { categories } = useExpenseCategories()
 
-  const [categoryId,  setCategoryId]  = useState('')
-  const [amount,      setAmount]      = useState('')
-  const [date,        setDate]        = useState(todayString())
-  const [description, setDescription] = useState('')
-  const [vehicle,     setVehicle]     = useState('Delivery Van')
+  const [categoryId,      setCategoryId]      = useState('')
+  const [amount,          setAmount]          = useState('')
+  const [date,            setDate]            = useState(todayString())
+  const [description,     setDescription]     = useState('')
+  const [paidVia,         setPaidVia]         = useState('cash')
+  const [bankAccountId,   setBankAccountId]   = useState('')
+  const [bankAccounts,    setBankAccounts]    = useState<BankAccountBalance[]>([])
+  const [vehicle,         setVehicle]         = useState('Delivery Van')
   const [odometer,    setOdometer]    = useState('')
   const [workerName,  setWorkerName]  = useState('')
   const [laborType,   setLaborType]   = useState<'daily' | 'monthly'>('daily')
@@ -38,6 +48,15 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
   const catName          = selectedCategory?.name ?? ''
   const isFuel           = catName === 'Fuel'
   const isLabor          = catName === 'Labor'
+
+  useEffect(() => {
+    window.fetch('/api/accounts')
+      .then(r => r.json())
+      .then((data: BankAccountBalance[]) =>
+        setBankAccounts(data.filter(a => a.is_active))
+      )
+      .catch(console.error)
+  }, [])
 
   // Auto-set description based on category
   function handleCategoryChange(id: string) {
@@ -75,6 +94,9 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
         worker_name:  isLabor ? workerName           : undefined,
         labor_type:   isLabor ? laborType            : undefined,
         notes:        notes || undefined,
+        ...(paidVia === 'bank_transfer' && bankAccountId
+          ? { bank_account_id: bankAccountId }
+          : {}),
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -221,6 +243,47 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
               <option value="monthly">Monthly salary</option>
             </select>
           </div>
+        </div>
+      )}
+
+      {/* Paid via */}
+      <div className="form-group">
+        <label className="label">Paid via</label>
+        <select
+          className="select"
+          value={paidVia}
+          onChange={e => {
+            setPaidVia(e.target.value)
+            if (e.target.value !== 'bank_transfer') {
+              setBankAccountId('')
+            }
+          }}
+        >
+          <option value="cash">Cash</option>
+          <option value="bank_transfer">Bank transfer</option>
+          <option value="easypaisa">Easypaisa</option>
+          <option value="jazzcash">JazzCash</option>
+        </select>
+      </div>
+
+      {paidVia === 'bank_transfer' && (
+        <div className="form-group">
+          <label className="label">Bank account</label>
+          <select
+            className="select"
+            value={bankAccountId}
+            onChange={e => setBankAccountId(e.target.value)}
+          >
+            <option value="">Select account…</option>
+            {bankAccounts.map(account => (
+              <option
+                key={account.bank_account_id}
+                value={account.bank_account_id}
+              >
+                {accountLabel(account)}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

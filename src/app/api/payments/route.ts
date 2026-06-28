@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     payment_method,
     reference,
     notes,
+    bank_account_id,
   } = body
 
   if (!customer_id) {
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
       payment_method: payment_method || null,
       reference:      reference      || null,
       notes:          notes          || null,
+      bank_account_id: bank_account_id || null,
       created_by:     user?.id       || null,
     })
     .select()

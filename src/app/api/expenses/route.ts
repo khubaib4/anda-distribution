@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     worker_name,
     labor_type,
     notes,
+    bank_account_id,
   } = body
 
   if (!category_id) {
@@ -83,13 +84,14 @@ export async function POST(request: Request) {
       category_id,
       amount_paisa,
       expense_date,
-      description:  description.trim(),
-      vehicle:      vehicle      || null,
-      odometer_km:  odometer_km  || null,
-      worker_name:  worker_name  || null,
-      labor_type:   labor_type   || null,
-      notes:        notes        || null,
-      created_by:   user?.id     || null,
+      description:     description.trim(),
+      vehicle:         vehicle         || null,
+      odometer_km:     odometer_km     || null,
+      worker_name:     worker_name     || null,
+      labor_type:      labor_type      || null,
+      notes:           notes           || null,
+      bank_account_id: bank_account_id || null,
+      created_by:      user?.id        || null,
     })
     .select(`*, category:expense_categories(id, name, icon)`)
     .single()
