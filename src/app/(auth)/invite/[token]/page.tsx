@@ -127,13 +127,13 @@ export default function InviteAcceptPage() {
       <div className="text-center mb-8">
         <div className="w-14 h-14 rounded-2xl bg-amber-500 flex items-center
                         justify-center mx-auto mb-4 shadow-card">
-          <span className="text-white font-bold text-2xl">A</span>
+          <span className="text-white font-bold text-2xl">D</span>
         </div>
         <h1 className="text-xl font-semibold text-stone-900">
           You&apos;ve been invited!
         </h1>
         <p className="text-stone-500 text-sm mt-1">
-          Join {invitation?.tenant_name} on Anda Distribution
+          Join {invitation?.tenant_name} on Doctor&apos;s Egg
         </p>
         {invitation && (
           <p className="text-stone-400 text-xs mt-2 capitalize">

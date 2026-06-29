@@ -21,7 +21,7 @@ export async function getTenantContext(): Promise<TenantContextResult | null> {
 
   const adminClient = createAdminClient()
 
-  const [{ data: membership }, { data: superAdminRow }] = await Promise.all([
+  const [{ data: memberRow }, { data: superAdminRow }] = await Promise.all([
     adminClient
       .from('tenant_members')
       .select('tenant_id, role')
@@ -40,7 +40,7 @@ export async function getTenantContext(): Promise<TenantContextResult | null> {
   if (isSuperAdmin) {
     return {
       userId:       user.id,
-      tenantId:     membership?.tenant_id ?? null,
+      tenantId:     memberRow?.tenant_id ?? null,
       role:         'super_admin',
       isSuperAdmin: true,
     }
@@ -48,8 +48,8 @@ export async function getTenantContext(): Promise<TenantContextResult | null> {
 
   return {
     userId:       user.id,
-    tenantId:     membership?.tenant_id ?? null,
-    role:         (membership?.role as TenantRole | undefined) ?? null,
+    tenantId:     memberRow?.tenant_id ?? null,
+    role:         (memberRow?.role as TenantRole | undefined) ?? null,
     isSuperAdmin: false,
   }
 }

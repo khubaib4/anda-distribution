@@ -22,7 +22,7 @@ export function generateInvoicePDF(sale: Sale): void {
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(22)
-  doc.text('Anda Distribution', margin, y)
+  doc.text("Doctor's Egg", margin, y)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)

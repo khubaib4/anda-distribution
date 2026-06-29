@@ -32,11 +32,11 @@ export default function AdminSidebar() {
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center
                           justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">A</span>
+            <span className="text-white font-bold text-sm">D</span>
           </div>
           <div className="min-w-0">
             <p className="text-white font-semibold text-sm leading-tight">
-              Super Admin
+              Doctor&apos;s Egg
             </p>
             <span className="inline-block mt-0.5 text-2xs font-semibold px-1.5
                              py-0.5 rounded bg-red-500/20 text-red-400 uppercase

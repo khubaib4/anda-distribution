@@ -74,10 +74,10 @@ export default function MobileHeader() {
                          flex items-center justify-between px-4 lg:hidden">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-brand-500 flex items-center justify-center">
-            <span className="text-white font-bold text-xs">A</span>
+            <span className="text-white font-bold text-xs">D</span>
           </div>
-          <span className="font-semibold text-stone-900 text-sm">
-            Anda Distribution
+          <span className="font-semibold text-stone-900 text-sm truncate">
+            {tenant.tenantName || "Doctor's Egg"}
           </span>
         </div>
         <button
@@ -108,10 +108,10 @@ export default function MobileHeader() {
                             border-b border-stone-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-md bg-brand-500 flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">A</span>
+                  <span className="text-white font-bold text-xs">D</span>
                 </div>
-                <span className="text-white font-semibold text-sm">
-                  Anda Distribution
+                <span className="text-white font-semibold text-sm truncate">
+                  {tenant.tenantName || "Doctor's Egg"}
                 </span>
               </div>
               <button

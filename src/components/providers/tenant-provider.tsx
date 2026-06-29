@@ -54,7 +54,7 @@ export default function TenantProvider({ children }: Props) {
                       justify-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-brand-500 flex items-center
                         justify-center">
-          <span className="text-white font-bold text-lg">A</span>
+          <span className="text-white font-bold text-lg">D</span>
         </div>
         <p className="text-sm text-stone-500">Loading…</p>
       </div>

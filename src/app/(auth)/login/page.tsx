@@ -125,10 +125,10 @@ export default function LoginPage() {
       <div className="text-center mb-8">
         <div className="w-14 h-14 rounded-2xl bg-brand-500 flex items-center
                         justify-center mx-auto mb-4 shadow-card">
-          <span className="text-white font-bold text-2xl">A</span>
+          <span className="text-white font-bold text-2xl">D</span>
         </div>
         <h1 className="text-xl font-semibold text-stone-900">
-          Anda Distribution
+          Doctor&apos;s Egg
         </h1>
         <p className="text-stone-500 text-sm mt-1">
           Sign in to your account
@@ -144,7 +144,7 @@ export default function LoginPage() {
       </Suspense>
 
       <p className="text-center text-xs text-stone-400 mt-6">
-        Anda Distribution Management System · Karachi
+        Doctor&apos;s Egg Management System · Karachi
       </p>
 
     </div>

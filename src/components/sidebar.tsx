@@ -70,11 +70,11 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-stone-800">
         <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-sm">A</span>
+          <span className="text-white font-bold text-sm">D</span>
         </div>
         <div className="min-w-0">
           <p className="text-white font-semibold text-sm leading-tight truncate">
-            {tenant.tenantName || 'Platform Admin'}
+            {tenant.tenantName || "Doctor's Egg"}
           </p>
           {tenant.role === 'staff' && (
             <span className="inline-block mt-0.5 text-2xs font-medium px-1.5 py-0.5
