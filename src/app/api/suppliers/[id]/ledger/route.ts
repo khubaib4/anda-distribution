@@ -1,15 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
 
-  // Fetch purchases for this supplier
-  const { data: purchasesData, error: purchasesError } = await supabase
+  let purchasesQuery = supabase
     .from('purchases')
     .select(`
       id,
@@ -24,6 +28,9 @@ export async function GET(
     .eq('supplier_id', id)
     .order('purchase_date', { ascending: true })
     .order('created_at',    { ascending: true })
+  purchasesQuery = tenantEq(purchasesQuery, tenantId)
+
+  const { data: purchasesData, error: purchasesError } = await purchasesQuery
 
   if (purchasesError) {
     return NextResponse.json(
@@ -32,13 +39,15 @@ export async function GET(
     )
   }
 
-  // Fetch payments to this supplier
-  const { data: paymentsData, error: paymentsError } = await supabase
+  let paymentsQuery = supabase
     .from('supplier_payments')
     .select('*')
     .eq('supplier_id', id)
     .order('payment_date', { ascending: true })
     .order('created_at',   { ascending: true })
+  paymentsQuery = tenantEq(paymentsQuery, tenantId)
+
+  const { data: paymentsData, error: paymentsError } = await paymentsQuery
 
   if (paymentsError) {
     return NextResponse.json(
@@ -47,7 +56,6 @@ export async function GET(
     )
   }
 
-  // Build ledger entries
   type LedgerEntry = {
     id:              string
     entry_type:      'purchase' | 'payment'
@@ -62,7 +70,6 @@ export async function GET(
 
   const entries: Omit<LedgerEntry, 'running_balance'>[] = []
 
-  // Purchases = debit (we owe supplier more)
   for (const purchase of purchasesData ?? []) {
     const total = (purchase.items ?? []).reduce(
       (sum: number, item: {
@@ -82,7 +89,6 @@ export async function GET(
     })
   }
 
-  // Payments = credit (reduces what we owe)
   for (const payment of paymentsData ?? []) {
     entries.push({
       id:             payment.id,
@@ -97,7 +103,6 @@ export async function GET(
     })
   }
 
-  // Sort by date; payments before purchases on same day
   entries.sort((a, b) => {
     if (a.entry_date !== b.entry_date) {
       return a.entry_date.localeCompare(b.entry_date)
@@ -107,7 +112,6 @@ export async function GET(
     return 0
   })
 
-  // Compute running balance
   let balance = 0
   const ledger: LedgerEntry[] = entries.map(entry => {
     balance += entry.debit_paisa - entry.credit_paisa

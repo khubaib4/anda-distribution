@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
   const supplierId = searchParams.get('supplier_id')
@@ -11,6 +16,7 @@ export async function GET(request: Request) {
     .select('*')
     .order('payment_date', { ascending: false })
 
+  query = tenantEq(query, tenantId)
   if (supplierId) query = query.eq('supplier_id', supplierId)
 
   const { data, error } = await query
@@ -23,6 +29,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
+  const writeTenantId = requireWriteTenantId(tenantId, request)
+  if (writeTenantId instanceof NextResponse) return writeTenantId
+
   const supabase = await createClient()
 
   const {
@@ -57,6 +70,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from('supplier_payments')
     .insert({
+      tenant_id:       writeTenantId,
       supplier_id,
       amount_paisa,
       payment_date:    payment_date    || new Date().toISOString().split('T')[0],

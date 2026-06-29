@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
@@ -12,20 +17,23 @@ export async function GET(request: Request) {
   const to   = searchParams.get('to')   || today
 
   // 1. Revenue — sum of all sale_items in date range
-  const { data: salesData } = await supabase
-    .from('sales')
-    .select(`
-      id,
-      sale_date,
-      items:sale_items(
-        quantity_trays,
-        price_per_tray_paisa,
-        cost_per_tray_paisa,
-        egg_category:egg_categories(name)
-      )
-    `)
-    .gte('sale_date', from)
-    .lte('sale_date', to)
+  const { data: salesData } = await tenantEq(
+    supabase
+      .from('sales')
+      .select(`
+        id,
+        sale_date,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          cost_per_tray_paisa,
+          egg_category:egg_categories(name)
+        )
+      `)
+      .gte('sale_date', from)
+      .lte('sale_date', to),
+    tenantId,
+  )
 
   // Revenue and COGS per category
   const categoryMap: Record<string, {
@@ -71,14 +79,17 @@ export async function GET(request: Request) {
   const grossProfit = totalRevenue - totalCOGS
 
   // 2. Operating expenses by category
-  const { data: expensesData } = await supabase
-    .from('expenses')
-    .select(`
-      amount_paisa,
-      category:expense_categories(name, icon)
-    `)
-    .gte('expense_date', from)
-    .lte('expense_date', to)
+  const { data: expensesData } = await tenantEq(
+    supabase
+      .from('expenses')
+      .select(`
+        amount_paisa,
+        category:expense_categories(name, icon)
+      `)
+      .gte('expense_date', from)
+      .lte('expense_date', to),
+    tenantId,
+  )
 
   const expenseMap: Record<string, {
     name:         string
@@ -107,11 +118,14 @@ export async function GET(request: Request) {
   const netProfit = grossProfit - totalExpenses
 
   // 3. Purchase total for the period
-  const { data: purchasesData } = await supabase
-    .from('purchases')
-    .select(`items:purchase_items(quantity_trays, price_per_tray_paisa)`)
-    .gte('purchase_date', from)
-    .lte('purchase_date', to)
+  const { data: purchasesData } = await tenantEq(
+    supabase
+      .from('purchases')
+      .select(`items:purchase_items(quantity_trays, price_per_tray_paisa)`)
+      .gte('purchase_date', from)
+      .lte('purchase_date', to),
+    tenantId,
+  )
 
   const totalPurchases = (purchasesData ?? []).reduce((sum, p) => {
     return sum + (p.items ?? []).reduce(

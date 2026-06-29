@@ -1,23 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
 
-  // Get partner summaries from view
-  const { data: summaries, error: summaryError } = await supabase
-    .from('partner_capital_summary')
-    .select('*')
-
-  if (summaryError) {
-    return NextResponse.json(
-      { error: summaryError.message },
-      { status: 500 }
-    )
-  }
-
-  // Get all transactions with partner info
-  const { data: transactions, error: txError } = await supabase
+  let transactionsQuery = supabase
     .from('capital_transactions')
     .select(`
       *,
@@ -27,20 +19,64 @@ export async function GET() {
     `)
     .order('transaction_date', { ascending: false })
     .order('created_at',       { ascending: false })
+  transactionsQuery = tenantEq(transactionsQuery, tenantId)
+
+  const { data: transactions, error: txError } = await transactionsQuery
 
   if (txError) {
     return NextResponse.json({ error: txError.message }, { status: 500 })
   }
 
-  const totalCapital = (summaries ?? []).reduce(
-    (s: number, p: { net_capital_paisa: number }) =>
-      s + p.net_capital_paisa, 0
+  const summaryMap = new Map<string, {
+    partner_id:               string
+    full_name:                string
+    total_contributed_paisa:  number
+    total_withdrawn_paisa:    number
+    net_capital_paisa:        number
+  }>()
+
+  for (const tx of transactions ?? []) {
+    const partnerId   = tx.partner_id
+    const fullName    = tx.partner?.full_name ?? 'Unknown'
+    const existing    = summaryMap.get(partnerId) ?? {
+      partner_id:              partnerId,
+      full_name:               fullName,
+      total_contributed_paisa: 0,
+      total_withdrawn_paisa:   0,
+      net_capital_paisa:       0,
+    }
+
+    if (tx.type === 'contribution') {
+      existing.total_contributed_paisa += tx.amount_paisa
+    } else if (tx.type === 'withdrawal') {
+      existing.total_withdrawn_paisa += tx.amount_paisa
+    }
+
+    existing.net_capital_paisa =
+      existing.total_contributed_paisa - existing.total_withdrawn_paisa
+    summaryMap.set(partnerId, existing)
+  }
+
+  const summaries = [...summaryMap.values()].sort((a, b) =>
+    a.full_name.localeCompare(b.full_name),
+  )
+
+  const totalCapital = summaries.reduce(
+    (s, p) => s + p.net_capital_paisa,
+    0,
   )
 
   return NextResponse.json({ summaries, transactions, totalCapital })
 }
 
 export async function POST(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
+  const writeTenantId = requireWriteTenantId(tenantId, request)
+  if (writeTenantId instanceof NextResponse) return writeTenantId
+
   const supabase = await createClient()
 
   const {
@@ -80,6 +116,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from('capital_transactions')
     .insert({
+      tenant_id:        writeTenantId,
       partner_id,
       type,
       amount_paisa,

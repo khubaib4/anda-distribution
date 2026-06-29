@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
@@ -14,61 +19,70 @@ export async function GET(request: Request) {
     { data: expensesData,      error: expensesError      },
     { data: supplierPayments,  error: supplierPayError   },
   ] = await Promise.all([
-    supabase
-      .from('sales')
-      .select(`
-        id,
-        invoice_number,
-        sale_date,
-        payment_status,
-        customer:customers(id, contact_name, business_name),
-        items:sale_items(quantity_trays, price_per_tray_paisa)
-      `)
-      .eq('sale_date', date)
-      .eq('payment_status', 'paid')
-      .order('created_at', { ascending: true }),
-
-    supabase
-      .from('customer_payments')
-      .select(`
-        id,
-        customer_id,
-        amount_paisa,
-        payment_date,
-        payment_method,
-        reference,
-        notes,
-        customer:customers(contact_name, business_name)
-      `)
-      .eq('payment_date', date)
-      .order('created_at', { ascending: true }),
-
-    supabase
-      .from('expenses')
-      .select(`
-        id,
-        amount_paisa,
-        expense_date,
-        description,
-        category:expense_categories(name, icon)
-      `)
-      .eq('expense_date', date)
-      .order('created_at', { ascending: true }),
-
-    supabase
-      .from('supplier_payments')
-      .select(`
-        id,
-        supplier_id,
-        amount_paisa,
-        payment_date,
-        payment_method,
-        reference,
-        notes,
-        supplier:suppliers(name)
-      `)
-      .eq('payment_date', date)
-      .order('created_at', { ascending: true }),
+    tenantEq(
+      supabase
+        .from('sales')
+        .select(`
+          id,
+          invoice_number,
+          sale_date,
+          payment_status,
+          customer:customers(id, contact_name, business_name),
+          items:sale_items(quantity_trays, price_per_tray_paisa)
+        `)
+        .eq('sale_date', date)
+        .eq('payment_status', 'paid')
+        .order('created_at', { ascending: true }),
+      tenantId,
+    ),
+    tenantEq(
+      supabase
+        .from('customer_payments')
+        .select(`
+          id,
+          customer_id,
+          amount_paisa,
+          payment_date,
+          payment_method,
+          reference,
+          notes,
+          customer:customers(contact_name, business_name)
+        `)
+        .eq('payment_date', date)
+        .order('created_at', { ascending: true }),
+      tenantId,
+    ),
+    tenantEq(
+      supabase
+        .from('expenses')
+        .select(`
+          id,
+          amount_paisa,
+          expense_date,
+          description,
+          category:expense_categories(name, icon)
+        `)
+        .eq('expense_date', date)
+        .order('created_at', { ascending: true }),
+      tenantId,
+    ),
+    tenantEq(
+      supabase
+        .from('supplier_payments')
+        .select(`
+          id,
+          supplier_id,
+          amount_paisa,
+          payment_date,
+          payment_method,
+          reference,
+          notes,
+          supplier:suppliers(name)
+        `)
+        .eq('payment_date', date)
+        .order('created_at', { ascending: true }),
+      tenantId,
+    ),
   ])
 
   if (salesError) {

@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
@@ -25,6 +30,7 @@ export async function GET(request: Request) {
     .order('purchase_date', { ascending: false })
     .order('created_at',    { ascending: false })
 
+  query = tenantEq(query, tenantId)
   if (status)     query = query.eq('payment_status', status)
   if (supplierId) query = query.eq('supplier_id', supplierId)
   if (from)       query = query.gte('purchase_date', from)
@@ -36,7 +42,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Compute total_paisa for each purchase
   const enriched = (data ?? []).map(p => ({
     ...p,
     total_paisa: (p.items ?? []).reduce(
@@ -50,6 +55,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
+  const writeTenantId = requireWriteTenantId(tenantId, request)
+  if (writeTenantId instanceof NextResponse) return writeTenantId
+
   const supabase = await createClient()
 
   const {
@@ -68,7 +80,6 @@ export async function POST(request: Request) {
     items,
   } = body
 
-  // Validate
   if (!purchase_date) {
     return NextResponse.json(
       { error: 'Purchase date is required' },
@@ -90,9 +101,12 @@ export async function POST(request: Request) {
     }
   }
 
-  const { count, error: countError } = await supabase
+  let countQuery = supabase
     .from('purchases')
     .select('*', { count: 'exact', head: true })
+  countQuery = tenantEq(countQuery, tenantId)
+
+  const { count, error: countError } = await countQuery
 
   if (countError) {
     return NextResponse.json(
@@ -103,10 +117,10 @@ export async function POST(request: Request) {
 
   const invoice_number = `PUR-${String((count ?? 0) + 1).padStart(4, '0')}`
 
-  // Insert purchase
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
     .insert({
+      tenant_id:              writeTenantId,
       supplier_id:            supplier_id    || null,
       supplier_name_snapshot: supplier_name  || null,
       purchase_date,
@@ -126,12 +140,12 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert purchase items
   const itemRows = items.map((item: {
     egg_category_id:      string
     quantity_trays:       number
     price_per_tray_paisa: number
   }) => ({
+    tenant_id:            writeTenantId,
     purchase_id:          purchase.id,
     egg_category_id:      item.egg_category_id,
     quantity_trays:       item.quantity_trays,
@@ -143,7 +157,6 @@ export async function POST(request: Request) {
     .insert(itemRows)
 
   if (itemsError) {
-    // Rollback purchase
     await supabase.from('purchases').delete().eq('id', purchase.id)
     return NextResponse.json(
       { error: itemsError.message },
@@ -151,11 +164,11 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert stock movements (one per item)
   const movementRows = items.map((item: {
     egg_category_id: string
     quantity_trays:  number
   }) => ({
+    tenant_id:       writeTenantId,
     egg_category_id: item.egg_category_id,
     movement_type:   'purchase_in',
     quantity_trays:  item.quantity_trays,
@@ -170,7 +183,6 @@ export async function POST(request: Request) {
     .insert(movementRows)
 
   if (movementsError) {
-    // Rollback purchase + items
     await supabase.from('purchases').delete().eq('id', purchase.id)
     return NextResponse.json(
       { error: movementsError.message },

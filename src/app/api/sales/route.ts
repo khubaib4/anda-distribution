@@ -1,7 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import {
+  computeSaleSubtotalPaisa,
+  computeSalePaymentBreakdown,
+  effectiveItemPricePaisa,
+} from '@/lib/utils'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
@@ -10,21 +20,27 @@ export async function GET(request: Request) {
   const from       = searchParams.get('from')
   const to         = searchParams.get('to')
 
-  let query = supabase
-    .from('sales')
-    .select(`
-      *,
-      customer:customers(id, contact_name, business_name, phone),
-      items:sale_items(
-        id,
-        quantity_trays,
-        price_per_tray_paisa,
-        cost_per_tray_paisa,
-        egg_category:egg_categories(id, name)
-      )
-    `)
-    .order('sale_date',   { ascending: false })
-    .order('created_at',  { ascending: false })
+  let query = tenantEq(
+    supabase
+      .from('sales')
+      .select(`
+        *,
+        customer:customers(id, contact_name, business_name, phone),
+        items:sale_items(
+          id,
+          quantity_trays,
+          price_per_tray_paisa,
+          discount_type,
+          discount_value,
+          discounted_price_paisa,
+          cost_per_tray_paisa,
+          egg_category:egg_categories(id, name)
+        )
+      `)
+      .order('sale_date',   { ascending: false })
+      .order('created_at',  { ascending: false }),
+    tenantId,
+  )
 
   if (status)     query = query.eq('payment_status', status)
   if (customerId) query = query.eq('customer_id', customerId)
@@ -37,21 +53,35 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const enriched = (data ?? []).map(s => ({
-    ...s,
-    total_paisa: (s.items ?? []).reduce(
-      (sum: number, item: {
-        quantity_trays: number
-        price_per_tray_paisa: number
-      }) => sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    ),
-  }))
+  const enriched = (data ?? []).map(s => {
+    const subtotal = computeSaleSubtotalPaisa(s.items ?? [])
+    const discount = s.discount_amount_paisa ?? 0
+    const total_paisa = subtotal - discount
+    const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
+      payment_status:    s.payment_status,
+      amount_paid_paisa: s.amount_paid_paisa,
+      total_paisa,
+    })
+    return {
+      ...s,
+      subtotal_paisa: subtotal,
+      total_paisa,
+      paid_paisa,
+      remaining_paisa,
+    }
+  })
 
   return NextResponse.json(enriched)
 }
 
 export async function POST(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
+  const writeTenantId = requireWriteTenantId(tenantId, request)
+  if (writeTenantId instanceof NextResponse) return writeTenantId
+
   const supabase = await createClient()
 
   const {
@@ -69,10 +99,12 @@ export async function POST(request: Request) {
     due_date,
     amount_paid_paisa,
     notes,
+    discount_type,
+    discount_value,
+    discount_amount_paisa,
     items,
   } = body
 
-  // Validate
   if (!customer_id) {
     return NextResponse.json(
       { error: 'Customer is required' },
@@ -100,18 +132,18 @@ export async function POST(request: Request) {
     }
   }
 
-  // Get average cost per category for COGS
-  // We use the average purchase price from purchase_items
   const categoryIds = [...new Set(items.map((i: { egg_category_id: string }) =>
     i.egg_category_id
   ))]
 
-  const { data: costData } = await supabase
-    .from('purchase_items')
-    .select('egg_category_id, price_per_tray_paisa')
-    .in('egg_category_id', categoryIds)
+  const { data: costData } = await tenantEq(
+    supabase
+      .from('purchase_items')
+      .select('egg_category_id, price_per_tray_paisa')
+      .in('egg_category_id', categoryIds),
+    tenantId,
+  )
 
-  // Compute average cost per category
   const avgCosts: Record<string, number> = {}
   for (const categoryId of categoryIds) {
     const rows = (costData ?? []).filter(
@@ -127,9 +159,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const { count, error: countError } = await supabase
-    .from('sales')
-    .select('*', { count: 'exact', head: true })
+  const { count, error: countError } = await tenantEq(
+    supabase.from('sales').select('*', { count: 'exact', head: true }),
+    tenantId,
+  )
 
   if (countError) {
     return NextResponse.json(
@@ -140,18 +173,21 @@ export async function POST(request: Request) {
 
   const invoice_number = `SAL-${String((count ?? 0) + 1).padStart(4, '0')}`
 
-  // Insert sale
   const { data: sale, error: saleError } = await supabase
     .from('sales')
     .insert({
+      tenant_id:             writeTenantId,
       customer_id,
       sale_date,
       invoice_number,
-      notes:             notes             || null,
-      payment_status:    payment_status    || 'unpaid',
-      due_date:          due_date          || null,
-      amount_paid_paisa: amount_paid_paisa ?? 0,
-      created_by:        user?.id          || null,
+      notes:                 notes                 || null,
+      payment_status:        payment_status        || 'unpaid',
+      due_date:              due_date              || null,
+      amount_paid_paisa:     amount_paid_paisa     ?? 0,
+      discount_type:         discount_type         || null,
+      discount_value:        discount_value        ?? 0,
+      discount_amount_paisa: discount_amount_paisa ?? 0,
+      created_by:            user?.id              || null,
     })
     .select()
     .single()
@@ -163,17 +199,23 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert sale items
   const itemRows = items.map((item: {
-    egg_category_id:      string
-    quantity_trays:       number
-    price_per_tray_paisa: number
+    egg_category_id:        string
+    quantity_trays:         number
+    price_per_tray_paisa:   number
+    discount_type?:         'percentage' | 'fixed' | null
+    discount_value?:        number
+    discounted_price_paisa?: number
   }) => ({
-    sale_id:              sale.id,
-    egg_category_id:      item.egg_category_id,
-    quantity_trays:       item.quantity_trays,
-    price_per_tray_paisa: item.price_per_tray_paisa,
-    cost_per_tray_paisa:  avgCosts[item.egg_category_id] ?? 0,
+    tenant_id:              writeTenantId,
+    sale_id:                sale.id,
+    egg_category_id:        item.egg_category_id,
+    quantity_trays:         item.quantity_trays,
+    price_per_tray_paisa:   item.price_per_tray_paisa,
+    discount_type:          item.discount_type          ?? null,
+    discount_value:         item.discount_value         ?? 0,
+    discounted_price_paisa: item.discounted_price_paisa ?? 0,
+    cost_per_tray_paisa:    avgCosts[item.egg_category_id] ?? 0,
   }))
 
   const { error: itemsError } = await supabase
@@ -188,11 +230,11 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert stock movements (sale_out per item)
   const movementRows = items.map((item: {
     egg_category_id: string
     quantity_trays:  number
   }) => ({
+    tenant_id:       writeTenantId,
     egg_category_id: item.egg_category_id,
     movement_type:   'sale_out',
     quantity_trays:  item.quantity_trays,
@@ -214,18 +256,21 @@ export async function POST(request: Request) {
     )
   }
 
-  const totalPaisa = items.reduce(
+  const subtotalPaisa = items.reduce(
     (sum: number, item: {
-      quantity_trays: number
-      price_per_tray_paisa: number
-    }) => sum + item.quantity_trays * item.price_per_tray_paisa,
-    0
+      quantity_trays:         number
+      price_per_tray_paisa:   number
+      discounted_price_paisa?: number
+    }) => sum + item.quantity_trays * effectiveItemPricePaisa(item),
+    0,
   )
+  const totalPaisa = subtotalPaisa - (discount_amount_paisa ?? 0)
 
   if (payment_status === 'paid') {
     const { error: paymentError } = await supabase
       .from('customer_payments')
       .insert({
+        tenant_id:       writeTenantId,
         customer_id,
         amount_paisa:    totalPaisa,
         payment_date:    sale_date,
@@ -252,6 +297,7 @@ export async function POST(request: Request) {
     const { error: paymentError } = await supabase
       .from('customer_payments')
       .insert({
+        tenant_id:       writeTenantId,
         customer_id,
         amount_paisa:    amount_paid_paisa,
         payment_date:    sale_date,

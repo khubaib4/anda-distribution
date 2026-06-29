@@ -1,59 +1,84 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
+
+  let accountQuery = tenantEq(
+    supabase.from('bank_accounts').select('id').eq('id', id),
+    tenantId,
+  )
+  const { data: account, error: accountError } = await accountQuery.single()
+
+  if (accountError) {
+    return NextResponse.json({ error: accountError.message }, { status: 500 })
+  }
+  if (!account) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   const [
     { data: customerPayments, error: customerPayError },
     { data: supplierPayments, error: supplierPayError },
     { data: expensesData,     error: expensesError     },
   ] = await Promise.all([
-    supabase
-      .from('customer_payments')
-      .select(`
-        id,
-        amount_paisa,
-        payment_date,
-        payment_method,
-        created_at,
-        customer:customers(contact_name)
-      `)
-      .eq('bank_account_id', id)
-      .order('payment_date', { ascending: true })
-      .order('created_at',   { ascending: true }),
-
-    supabase
-      .from('supplier_payments')
-      .select(`
-        id,
-        amount_paisa,
-        payment_date,
-        payment_method,
-        created_at,
-        supplier:suppliers(name)
-      `)
-      .eq('bank_account_id', id)
-      .order('payment_date', { ascending: true })
-      .order('created_at',   { ascending: true }),
-
-    supabase
-      .from('expenses')
-      .select(`
-        id,
-        amount_paisa,
-        expense_date,
-        description,
-        created_at,
-        category:expense_categories(name, icon)
-      `)
-      .eq('bank_account_id', id)
-      .order('expense_date', { ascending: true })
-      .order('created_at',   { ascending: true }),
+    tenantEq(
+      supabase
+        .from('customer_payments')
+        .select(`
+          id,
+          amount_paisa,
+          payment_date,
+          payment_method,
+          created_at,
+          customer:customers(contact_name)
+        `)
+        .eq('bank_account_id', id)
+        .order('payment_date', { ascending: true })
+        .order('created_at',   { ascending: true }),
+      tenantId,
+    ),
+    tenantEq(
+      supabase
+        .from('supplier_payments')
+        .select(`
+          id,
+          amount_paisa,
+          payment_date,
+          payment_method,
+          created_at,
+          supplier:suppliers(name)
+        `)
+        .eq('bank_account_id', id)
+        .order('payment_date', { ascending: true })
+        .order('created_at',   { ascending: true }),
+      tenantId,
+    ),
+    tenantEq(
+      supabase
+        .from('expenses')
+        .select(`
+          id,
+          amount_paisa,
+          expense_date,
+          description,
+          created_at,
+          category:expense_categories(name, icon)
+        `)
+        .eq('bank_account_id', id)
+        .order('expense_date', { ascending: true })
+        .order('created_at',   { ascending: true }),
+      tenantId,
+    ),
   ])
 
   if (customerPayError) {

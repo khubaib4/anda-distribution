@@ -51,6 +51,39 @@ export function formatQtyCompact(trays: number): string {
   return `${peti}P ${rem}T`
 }
 
+export function eggsToTrays(eggs: number): number {
+  return eggs / 30
+}
+
+export function traysToEggs(trays: number): number {
+  return trays * 30
+}
+
+export function formatEggs(eggs: number): string {
+  if (eggs === 0) return '0 eggs'
+  if (eggs % 360 === 0) {
+    const peti = eggs / 360
+    return `${eggs} eggs (${peti} peti)`
+  }
+  if (eggs % 30 === 0) {
+    const trays = eggs / 30
+    return `${eggs} eggs (${trays} tray${trays !== 1 ? 's' : ''})`
+  }
+  if (eggs === 15) {
+    return '15 eggs (½ tray)'
+  }
+  return `${eggs} eggs`
+}
+
+export function formatTrayEquivalent(eggs: number): string {
+  const trays = eggsToTrays(eggs)
+  if (trays === Math.floor(trays)) {
+    return `(${trays} tray${trays !== 1 ? 's' : ''})`
+  }
+  if (trays === 0.5) return '(½ tray)'
+  return `(${trays.toFixed(1)} trays)`
+}
+
 // Convert peti + tray inputs to trays
 export function toTrays(peti: number, tray: number): number {
   return peti * 12 + tray
@@ -137,4 +170,123 @@ export function truncate(str: string, n: number): string {
 // Check if a value is a positive number
 export function isPositiveNumber(val: unknown): boolean {
   return typeof val === 'number' && !isNaN(val) && val > 0
+}
+
+export type DiscountType = 'percentage' | 'fixed'
+
+export function computeDiscountedPricePaisa(
+  quantityTrays: number,
+  pricePerTrayPaisa: number,
+  discountType: DiscountType | null,
+  discountValue: number,
+): number {
+  if (
+    !discountType ||
+    discountValue <= 0 ||
+    pricePerTrayPaisa <= 0 ||
+    quantityTrays <= 0
+  ) {
+    return 0
+  }
+
+  const lineTotal = quantityTrays * pricePerTrayPaisa
+  let discountedTotal: number
+
+  if (discountType === 'percentage') {
+    const discountAmount = Math.round(lineTotal * discountValue / 100)
+    discountedTotal = Math.max(0, lineTotal - discountAmount)
+  } else {
+    const fixedAmountPaisa = Math.round(discountValue * 100)
+    discountedTotal = Math.max(0, lineTotal - fixedAmountPaisa)
+  }
+
+  return Math.round(discountedTotal / quantityTrays)
+}
+
+export function computeLineDiscountSavingPaisa(
+  quantityTrays: number,
+  pricePerTrayPaisa: number,
+  discountType: DiscountType | null,
+  discountValue: number,
+): number {
+  if (!discountType || discountValue <= 0 || quantityTrays <= 0) return 0
+  const lineTotal = quantityTrays * pricePerTrayPaisa
+  const discountedPrice = computeDiscountedPricePaisa(
+    quantityTrays,
+    pricePerTrayPaisa,
+    discountType,
+    discountValue,
+  )
+  if (discountedPrice <= 0) return 0
+  return lineTotal - quantityTrays * discountedPrice
+}
+
+export function effectiveItemPricePaisa(item: {
+  price_per_tray_paisa: number
+  discounted_price_paisa?: number
+}): number {
+  return (item.discounted_price_paisa ?? 0) > 0
+    ? item.discounted_price_paisa!
+    : item.price_per_tray_paisa
+}
+
+export function effectiveItemLineTotalPaisa(item: {
+  quantity_trays?: number
+  quantity_peti?: number
+  quantity_tray?: number
+  price_per_tray_paisa: number
+  discounted_price_paisa?: number
+}): number {
+  const trays = item.quantity_trays
+    ?? (item.quantity_peti ?? 0) * 12 + (item.quantity_tray ?? 0)
+  if ((item.discounted_price_paisa ?? 0) > 0) {
+    return item.discounted_price_paisa! * trays
+  }
+  return trays * item.price_per_tray_paisa
+}
+
+export function computeSaleSubtotalPaisa(
+  items: Array<{
+    quantity_trays: number
+    price_per_tray_paisa: number
+    discounted_price_paisa?: number
+  }>,
+): number {
+  return items.reduce(
+    (sum, item) => sum + effectiveItemLineTotalPaisa(item),
+    0,
+  )
+}
+
+export function computeDiscountAmountPaisa(
+  subtotalPaisa: number,
+  discountType: DiscountType | null,
+  discountValue: number,
+): number {
+  if (!discountType || discountValue <= 0 || subtotalPaisa <= 0) return 0
+  if (discountType === 'percentage') {
+    return Math.min(
+      subtotalPaisa,
+      Math.round(subtotalPaisa * discountValue / 100),
+    )
+  }
+  return Math.min(subtotalPaisa, Math.round(discountValue * 100))
+}
+
+export function computeSalePaymentBreakdown(sale: {
+  payment_status: string
+  amount_paid_paisa?: number
+  total_paisa: number
+}): { paid_paisa: number; remaining_paisa: number } {
+  const total = sale.total_paisa
+  let paid = 0
+  if (sale.payment_status === 'paid') {
+    paid = total
+  } else if (sale.payment_status === 'partial') {
+    paid = sale.amount_paid_paisa ?? 0
+  }
+  return {
+    paid_paisa:      paid,
+    remaining_paisa: total - paid,
+  }
 }

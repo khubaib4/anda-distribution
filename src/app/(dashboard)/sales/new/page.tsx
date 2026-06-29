@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
@@ -10,7 +10,14 @@ import { useCurrentStock } from '@/hooks/use-stock'
 import SaleItemRow, {
   type SaleItemDraft,
 } from '@/components/sales/sale-item-row'
-import { todayString, formatPKR, formatQty, toPaisa } from '@/lib/utils'
+import {
+  todayString,
+  formatPKR,
+  formatQty,
+  toPaisa,
+  effectiveItemLineTotalPaisa,
+  computeDiscountAmountPaisa,
+} from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
 
 function accountLabel(account: BankAccountBalance): string {
@@ -20,11 +27,14 @@ function accountLabel(account: BankAccountBalance): string {
 
 function newItem(): SaleItemDraft {
   return {
-    id:                   crypto.randomUUID(),
-    egg_category_id:      '',
-    quantity_peti:        0,
-    quantity_tray:        0,
-    price_per_tray_paisa: 0,
+    id:                     crypto.randomUUID(),
+    egg_category_id:        '',
+    quantity_peti:          0,
+    quantity_tray:          0,
+    price_per_tray_paisa:   0,
+    discount_type:          null,
+    discount_value:         0,
+    discounted_price_paisa: 0,
   }
 }
 
@@ -34,7 +44,6 @@ export default function NewSalePage() {
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
 
-  // Header fields
   const [customerId,    setCustomerId]    = useState('')
   const [saleDate,      setSaleDate]      = useState(todayString())
   const [paymentStatus, setPaymentStatus] = useState<
@@ -49,10 +58,13 @@ export default function NewSalePage() {
   const [bankAccounts,  setBankAccounts]  = useState<BankAccountBalance[]>([])
   const [notes,         setNotes]         = useState('')
 
-  // Line items
-  const [items, setItems] = useState<SaleItemDraft[]>([newItem()])
+  const [saleDiscountOn,   setSaleDiscountOn]   = useState(false)
+  const [saleDiscountType, setSaleDiscountType] = useState<
+    'percentage' | 'fixed'
+  >('percentage')
+  const [saleDiscountValue, setSaleDiscountValue] = useState('')
 
-  // UI state
+  const [items, setItems] = useState<SaleItemDraft[]>([newItem()])
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
@@ -65,7 +77,6 @@ export default function NewSalePage() {
       .catch(console.error)
   }, [])
 
-  // Item handlers
   const handleItemChange = useCallback(
     (id: string, patch: Partial<SaleItemDraft>) => {
       setItems(prev =>
@@ -81,24 +92,34 @@ export default function NewSalePage() {
 
   const handleAddItem = () => setItems(prev => [...prev, newItem()])
 
-  // Totals
-  const grandTotalPaisa = items.reduce((sum, item) => {
-    const trays = item.quantity_peti * 12 + item.quantity_tray
-    return sum + trays * item.price_per_tray_paisa
-  }, 0)
+  const subtotalPaisa = useMemo(
+    () => items.reduce(
+      (sum, item) => sum + effectiveItemLineTotalPaisa(item),
+      0,
+    ),
+    [items],
+  )
+
+  const saleDiscountAmountPaisa = useMemo(() => {
+    if (!saleDiscountOn) return 0
+    const value = saleDiscountType === 'fixed'
+      ? parseFloat(saleDiscountValue || '0')
+      : parseFloat(saleDiscountValue || '0')
+    return computeDiscountAmountPaisa(subtotalPaisa, saleDiscountType, value)
+  }, [saleDiscountOn, saleDiscountType, saleDiscountValue, subtotalPaisa])
+
+  const grandTotalPaisa = subtotalPaisa - saleDiscountAmountPaisa
 
   const totalTrays = items.reduce(
     (sum, item) => sum + item.quantity_peti * 12 + item.quantity_tray,
-    0
+    0,
   )
 
-  // Stock lookup helper
   function getAvailableStock(categoryId: string): number {
     return stock.find(s => s.egg_category_id === categoryId)
       ?.quantity_trays ?? 0
   }
 
-  // Submit
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -123,7 +144,6 @@ export default function NewSalePage() {
         return
       }
 
-      // Stock check
       const available = getAvailableStock(item.egg_category_id)
       if (trays > available) {
         const cat = categories.find(c => c.id === item.egg_category_id)
@@ -150,16 +170,28 @@ export default function NewSalePage() {
     setSaving(true)
 
     try {
+      const saleDiscountValueNum = saleDiscountOn
+        ? (saleDiscountType === 'fixed'
+          ? parseFloat(saleDiscountValue || '0')
+          : parseFloat(saleDiscountValue || '0'))
+        : 0
+
       const payload: Record<string, unknown> = {
         customer_id:    customerId,
         sale_date:      saleDate,
         payment_status: paymentStatus,
         notes:          notes || null,
         due_date:       dueDate || null,
+        discount_type:  saleDiscountOn ? saleDiscountType : null,
+        discount_value: saleDiscountOn ? saleDiscountValueNum : 0,
+        discount_amount_paisa: saleDiscountAmountPaisa,
         items: items.map(item => ({
-          egg_category_id:      item.egg_category_id,
-          quantity_trays:       item.quantity_peti * 12 + item.quantity_tray,
-          price_per_tray_paisa: item.price_per_tray_paisa,
+          egg_category_id:        item.egg_category_id,
+          quantity_trays:         item.quantity_peti * 12 + item.quantity_tray,
+          price_per_tray_paisa:   item.price_per_tray_paisa,
+          discount_type:          item.discount_type,
+          discount_value:         item.discount_value,
+          discounted_price_paisa: item.discounted_price_paisa,
         })),
       }
 
@@ -200,7 +232,6 @@ export default function NewSalePage() {
   return (
     <div className="max-w-2xl mx-auto">
 
-      {/* Back + title */}
       <div className="mb-6">
         <Link
           href="/sales"
@@ -218,7 +249,6 @@ export default function NewSalePage() {
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
 
-        {/* Customer & Date */}
         <div className="card p-4 space-y-4">
           <p className="section-title">Customer & date</p>
 
@@ -254,7 +284,6 @@ export default function NewSalePage() {
           </div>
         </div>
 
-        {/* Stock availability hint */}
         {stock.length > 0 && (
           <div className="card p-3">
             <p className="section-title mb-2">Available stock</p>
@@ -274,7 +303,6 @@ export default function NewSalePage() {
           </div>
         )}
 
-        {/* Line items */}
         <div className="card p-4 space-y-3">
           <p className="section-title">Egg items</p>
 
@@ -298,24 +326,37 @@ export default function NewSalePage() {
             Add another category
           </button>
 
-          {/* Grand total */}
-          {grandTotalPaisa > 0 && (
-            <div className="flex items-center justify-between pt-3
-                            border-t border-stone-200 mt-2">
-              <div>
-                <p className="text-xs text-stone-500">Grand total</p>
-                <p className="text-2xs text-stone-400">
-                  {totalTrays} trays total
+          {subtotalPaisa > 0 && (
+            <div className="pt-3 border-t border-stone-200 mt-2 space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-stone-500">Subtotal</span>
+                <span className="amount text-stone-900">
+                  {formatPKR(subtotalPaisa)}
+                </span>
+              </div>
+              {saleDiscountAmountPaisa > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-success">Discount</span>
+                  <span className="amount text-success">
+                    − {formatPKR(saleDiscountAmountPaisa)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1">
+                <div>
+                  <p className="text-xs text-stone-500">Grand total</p>
+                  <p className="text-2xs text-stone-400">
+                    {totalTrays} trays total
+                  </p>
+                </div>
+                <p className="amount text-lg text-stone-900">
+                  {formatPKR(grandTotalPaisa)}
                 </p>
               </div>
-              <p className="amount text-lg text-stone-900">
-                {formatPKR(grandTotalPaisa)}
-              </p>
             </div>
           )}
         </div>
 
-        {/* Payment */}
         <div className="card p-4 space-y-4">
           <p className="section-title">Payment</p>
 
@@ -334,6 +375,71 @@ export default function NewSalePage() {
               <option value="partial">Partial payment</option>
               <option value="paid">Paid — cash on delivery</option>
             </select>
+          </div>
+
+          {/* Overall sale discount */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setSaleDiscountOn(v => !v)}
+              className={[
+                'text-xs font-medium px-2.5 py-1 rounded-md transition-colors',
+                saleDiscountOn
+                  ? 'bg-brand-100 text-brand-700'
+                  : 'bg-stone-200 text-stone-600 hover:bg-stone-300',
+              ].join(' ')}
+            >
+              {saleDiscountOn ? 'Overall discount on' : 'Add overall discount'}
+            </button>
+
+            {saleDiscountOn && (
+              <div className="space-y-2 pl-1">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSaleDiscountType('percentage')}
+                    className={[
+                      'flex-1 text-xs font-medium py-1.5 rounded-md border',
+                      saleDiscountType === 'percentage'
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-stone-200 text-stone-600',
+                    ].join(' ')}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaleDiscountType('fixed')}
+                    className={[
+                      'flex-1 text-xs font-medium py-1.5 rounded-md border',
+                      saleDiscountType === 'fixed'
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-stone-200 text-stone-600',
+                    ].join(' ')}
+                  >
+                    Fixed ₨
+                  </button>
+                </div>
+                <div>
+                  <label className="label">Discount value</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step={saleDiscountType === 'fixed' ? '0.01' : '1'}
+                    className="input"
+                    placeholder="0"
+                    value={saleDiscountValue}
+                    onChange={e => setSaleDiscountValue(e.target.value)}
+                  />
+                </div>
+                {saleDiscountAmountPaisa > 0 && (
+                  <p className="text-xs text-stone-500">
+                    Discount: {formatPKR(saleDiscountAmountPaisa)} · Total after
+                    discount: {formatPKR(grandTotalPaisa)}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {paymentStatus === 'unpaid' && (
@@ -468,7 +574,6 @@ export default function NewSalePage() {
           )}
         </div>
 
-        {/* Notes */}
         <div className="card p-4">
           <p className="section-title">Notes</p>
           <textarea
@@ -480,7 +585,6 @@ export default function NewSalePage() {
           />
         </div>
 
-        {/* Error + submit */}
         {error && (
           <div className="text-sm text-danger bg-red-50 border border-red-200
                           rounded px-4 py-3">

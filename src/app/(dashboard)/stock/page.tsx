@@ -6,7 +6,14 @@ import { useCurrentStock } from '@/hooks/use-stock'
 import { useStockMovements } from '@/hooks/use-stock'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import AdjustmentModal from '@/components/stock/adjustment-modal'
-import { formatQty, formatDate } from '@/lib/utils'
+import {
+  formatEggs,
+  formatTrayEquivalent,
+  formatDate,
+  formatPKRDecimal,
+  formatQty,
+} from '@/lib/utils'
+import type { StockMovement } from '@/types'
 
 const movementMeta: Record<string, {
   label: string
@@ -18,6 +25,13 @@ const movementMeta: Record<string, {
   adjustment_in:  { label: 'Adj. In',    color: 'text-success', sign: '+' },
   adjustment_out: { label: 'Adj. Out',   color: 'text-danger',  sign: '-' },
   opening_stock:  { label: 'Opening',    color: 'text-info',    sign: '+' },
+}
+
+function movementQuantity(m: StockMovement): string {
+  if ((m.quantity_eggs ?? 0) > 0) {
+    return formatEggs(m.quantity_eggs)
+  }
+  return formatQty(m.quantity_trays)
 }
 
 export default function StockPage() {
@@ -37,16 +51,18 @@ export default function StockPage() {
     refetchMovements()
   }
 
-  const totalTrays = stock.reduce((s, c) => s + c.quantity_trays, 0)
+  const totalEggs = stock.reduce(
+    (s, c) => s + (c.quantity_eggs ?? Math.round(c.quantity_trays * 30)),
+    0,
+  )
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Stock</h1>
           <p className="page-subtitle">
-            {stockLoading ? '…' : `${formatQty(totalTrays)} total`}
+            {stockLoading ? '…' : `${formatEggs(totalEggs)} total`}
           </p>
         </div>
         <button
@@ -59,7 +75,6 @@ export default function StockPage() {
         </button>
       </div>
 
-      {/* Current stock cards */}
       <div className="mb-6">
         <p className="section-title">Current stock</p>
 
@@ -70,43 +85,35 @@ export default function StockPage() {
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {stock.map(cat => {
-              const peti = Math.floor(cat.quantity_trays / 12)
-              const rem  = cat.quantity_trays % 12
-              const low  = cat.quantity_trays < 24 // less than 2 peti = low stock
+              const eggs = cat.quantity_eggs
+                ?? Math.round(cat.quantity_trays * 30)
+              const low = eggs < 720 && eggs > 0
 
               return (
                 <div
                   key={cat.egg_category_id}
-                  className={`card p-4 ${low && cat.quantity_trays > 0 ? 'border-amber-300' : ''}`}
+                  className={`card p-4 ${low ? 'border-amber-300' : ''}`}
                 >
                   <p className="text-xs font-medium text-stone-500 mb-2">
                     {cat.egg_category}
                   </p>
 
                   <p className="qty text-2xl font-semibold text-stone-900">
-                    {peti}
-                    <span className="text-sm font-normal text-stone-400 ml-1">
-                      peti
-                    </span>
+                    {eggs.toLocaleString('en-IN')}
+                    <span className="text-base ml-1">🥚</span>
                   </p>
-
-                  {rem > 0 && (
-                    <p className="qty text-sm text-stone-500">
-                      + {rem} tray
-                    </p>
-                  )}
 
                   <p className="text-2xs text-stone-400 mt-1">
-                    {cat.quantity_trays} trays total
+                    {formatTrayEquivalent(eggs)}
                   </p>
 
-                  {low && cat.quantity_trays > 0 && (
+                  {low && (
                     <p className="text-2xs text-warning font-medium mt-1">
                       ⚠ Low stock
                     </p>
                   )}
 
-                  {cat.quantity_trays === 0 && (
+                  {eggs === 0 && (
                     <p className="text-2xs text-danger font-medium mt-1">
                       Out of stock
                     </p>
@@ -118,7 +125,6 @@ export default function StockPage() {
         )}
       </div>
 
-      {/* Movement history */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="section-title mb-0">Movement history</p>
@@ -153,7 +159,6 @@ export default function StockPage() {
           </div>
         ) : (
           <>
-            {/* Desktop table */}
             <div className="card hidden sm:block">
               <div className="table-container">
                 <table className="table">
@@ -163,12 +168,20 @@ export default function StockPage() {
                       <th>Type</th>
                       <th>Category</th>
                       <th className="text-right">Quantity</th>
+                      <th>Reason</th>
                       <th>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {movements.map(m => {
                       const meta = movementMeta[m.movement_type]
+                      const qty = movementQuantity(m)
+                      const priceNote =
+                        (m.movement_type === 'adjustment_in' ||
+                          m.movement_type === 'opening_stock') &&
+                        (m.price_per_egg_paisa ?? 0) > 0
+                          ? formatPKRDecimal(m.price_per_egg_paisa) + '/egg'
+                          : null
                       return (
                         <tr key={m.id}>
                           <td className="whitespace-nowrap text-stone-500">
@@ -184,10 +197,20 @@ export default function StockPage() {
                           </td>
                           <td className="text-right">
                             <span className={`qty font-medium ${meta.color}`}>
-                              {meta.sign}{formatQty(m.quantity_trays)}
+                              {meta.sign}{qty}
                             </span>
+                            {priceNote && (
+                              <p className="text-2xs text-stone-400 mt-0.5">
+                                {priceNote}
+                              </p>
+                            )}
                           </td>
-                          <td className="text-stone-400 text-xs truncate max-w-[200px]">
+                          <td className="text-stone-500 text-xs">
+                            {m.movement_type === 'adjustment_out'
+                              ? (m.reason ?? '—')
+                              : '—'}
+                          </td>
+                          <td className="text-stone-400 text-xs truncate max-w-[160px]">
                             {m.notes ?? '—'}
                           </td>
                         </tr>
@@ -198,11 +221,24 @@ export default function StockPage() {
               </div>
             </div>
 
-            {/* Mobile list */}
             <div className="sm:hidden card divide-y divide-stone-100">
               {movements.map(m => {
                 const meta = movementMeta[m.movement_type]
                 const isIn = meta.sign === '+'
+                const qty = movementQuantity(m)
+                const extras: string[] = []
+                if (m.movement_type === 'adjustment_out' && m.reason) {
+                  extras.push(m.reason)
+                }
+                if (
+                  (m.movement_type === 'adjustment_in' ||
+                    m.movement_type === 'opening_stock') &&
+                  (m.price_per_egg_paisa ?? 0) > 0
+                ) {
+                  extras.push(formatPKRDecimal(m.price_per_egg_paisa) + '/egg')
+                }
+                if (m.notes) extras.push(m.notes)
+
                 return (
                   <div key={m.id} className="flex items-center gap-3 px-4 py-3">
                     <div className={`w-7 h-7 rounded-full flex items-center
@@ -222,11 +258,11 @@ export default function StockPage() {
                       </p>
                       <p className="text-xs text-stone-400">
                         {formatDate(m.movement_date)}
-                        {m.notes ? ` · ${m.notes}` : ''}
+                        {extras.length > 0 ? ` · ${extras.join(' · ')}` : ''}
                       </p>
                     </div>
                     <p className={`qty text-sm font-medium ${meta.color} flex-shrink-0`}>
-                      {meta.sign}{formatQty(m.quantity_trays)}
+                      {meta.sign}{qty}
                     </p>
                   </div>
                 )
@@ -236,7 +272,6 @@ export default function StockPage() {
         )}
       </div>
 
-      {/* Adjustment modal */}
       {showAdjustment && (
         <AdjustmentModal
           onClose={() => setShowAdjustment(false)}

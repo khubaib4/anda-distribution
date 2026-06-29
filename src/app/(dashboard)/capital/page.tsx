@@ -9,6 +9,8 @@ import {
   todayString,
   toPaisa,
 } from '@/lib/utils'
+import { useTenant } from '@/lib/tenant-client'
+import AccessDenied from '@/components/access-denied'
 
 // Partner color mapping — consistent colors per partner
 const partnerColors = [
@@ -27,6 +29,7 @@ const partnerColors = [
 ]
 
 export default function CapitalPage() {
+  const { permissions } = useTenant()
   const { data, loading, error, createTransaction } = useCapital()
   const { partners } = usePartners()
 
@@ -86,6 +89,8 @@ export default function CapitalPage() {
   }
 
   const totalCapital = data?.totalCapital ?? 0
+
+  if (!permissions.canViewCapital) return <AccessDenied />
 
   return (
     <div>

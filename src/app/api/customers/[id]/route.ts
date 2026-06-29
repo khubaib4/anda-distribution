@@ -1,30 +1,104 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
+import { computeSaleSubtotalPaisa } from '@/lib/utils'
+
+function saleTotalPaisa(sale: {
+  discount_amount_paisa?: number
+  items?: Array<{
+    quantity_trays: number
+    price_per_tray_paisa: number
+    discounted_price_paisa?: number
+  }>
+}): number {
+  const subtotal = computeSaleSubtotalPaisa(sale.items ?? [])
+  return subtotal - (sale.discount_amount_paisa ?? 0)
+}
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('customer_balances')
-    .select('*')
-    .eq('customer_id', id)
-    .single()
+  const { data: customer, error: customerError } = await tenantEq(
+    supabase.from('customers').select('*').eq('id', id),
+    tenantId,
+  ).single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (customerError) {
+    return NextResponse.json({ error: customerError.message }, { status: 500 })
+  }
+  if (!customer) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  return NextResponse.json(data)
+  const { data: salesData, error: salesError } = await tenantEq(
+    supabase
+      .from('sales')
+      .select(`
+        discount_amount_paisa,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discounted_price_paisa
+        )
+      `)
+      .eq('customer_id', id),
+    tenantId,
+  )
+
+  if (salesError) {
+    return NextResponse.json({ error: salesError.message }, { status: 500 })
+  }
+
+  const { data: paymentsData, error: paymentsError } = await tenantEq(
+    supabase
+      .from('customer_payments')
+      .select('amount_paisa')
+      .eq('customer_id', id),
+    tenantId,
+  )
+
+  if (paymentsError) {
+    return NextResponse.json({ error: paymentsError.message }, { status: 500 })
+  }
+
+  const total_sales_paisa = (salesData ?? []).reduce(
+    (sum, sale) => sum + saleTotalPaisa(sale),
+    0,
+  )
+  const total_paid_paisa = (paymentsData ?? []).reduce(
+    (sum, p) => sum + p.amount_paisa,
+    0,
+  )
+
+  return NextResponse.json({
+    customer_id:       customer.id,
+    contact_name:      customer.contact_name,
+    business_name:     customer.business_name,
+    phone:             customer.phone,
+    customer_type:     customer.customer_type,
+    is_active:         customer.is_active,
+    total_sales_paisa,
+    total_paid_paisa,
+    balance_paisa:     total_sales_paisa - total_paid_paisa,
+  })
 }
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
   const body     = await request.json()
@@ -58,10 +132,10 @@ export async function PATCH(
   if (notes         !== undefined) updates.notes         = notes?.trim()         || null
   if (is_active     !== undefined) updates.is_active     = is_active
 
-  const { data, error } = await supabase
-    .from('customers')
-    .update(updates)
-    .eq('id', id)
+  const { data, error } = await tenantEq(
+    supabase.from('customers').update(updates).eq('id', id),
+    tenantId,
+  )
     .select()
     .single()
 

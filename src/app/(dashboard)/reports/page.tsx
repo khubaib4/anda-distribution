@@ -5,6 +5,8 @@ import {
   formatPKR,
   formatQty,
 } from '@/lib/utils'
+import { useTenant } from '@/lib/tenant-client'
+import AccessDenied from '@/components/access-denied'
 
 interface PLData {
   period: { from: string; to: string }
@@ -82,6 +84,8 @@ function PLRow({
 }
 
 export default function ReportsPage() {
+  const { permissions } = useTenant()
+
   const today      = new Date().toISOString().split('T')[0]
   const monthStart = today.slice(0, 7) + '-01'
 
@@ -122,6 +126,8 @@ export default function ReportsPage() {
       })(),                                                             to: today },
     { label: 'This year',  from: today.slice(0, 4) + '-01-01',       to: today },
   ]
+
+  if (!permissions.canViewReports) return <AccessDenied />
 
   return (
     <div className="max-w-2xl mx-auto">

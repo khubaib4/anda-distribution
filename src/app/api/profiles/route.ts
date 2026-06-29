@@ -1,14 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'partner')
-    .order('full_name')
+  const { data, error } = await tenantEq(
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'partner'),
+    tenantId,
+  ).order('full_name')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

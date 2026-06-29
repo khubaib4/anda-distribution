@@ -18,10 +18,13 @@ import {
   BellRing,
   Landmark,
   BarChart3,
+  Settings,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useTenant } from '@/lib/tenant-client'
+import { navPermissionForHref } from '@/lib/permissions'
 
 const navItems = [
   { href: '/',           label: 'Dashboard', icon: LayoutDashboard },
@@ -48,6 +51,7 @@ export default function MobileHeader() {
   const pathname         = usePathname()
   const router           = useRouter()
   const supabase         = createClient()
+  const tenant           = useTenant()
   const [overdueCount, setOverdueCount] = useState(0)
 
   useEffect(() => {
@@ -121,6 +125,9 @@ export default function MobileHeader() {
             {/* Nav links */}
             <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
               {navItems.map(({ href, label, icon: Icon }) => {
+                const permission = navPermissionForHref(href)
+                if (permission && !tenant.permissions[permission]) return null
+
                 const active = isActive(pathname, href)
                 return (
                   <Link
@@ -146,6 +153,22 @@ export default function MobileHeader() {
                   </Link>
                 )
               })}
+              {tenant.permissions.canViewSettings && (
+                <Link
+                  href="/settings"
+                  onClick={() => setOpen(false)}
+                  className={[
+                    'flex items-center gap-3 px-3 py-2.5 rounded-md',
+                    'text-sm font-medium transition-colors duration-150',
+                    isActive(pathname, '/settings')
+                      ? 'bg-brand-500 text-white'
+                      : 'text-stone-400 hover:text-white hover:bg-stone-800',
+                  ].join(' ')}
+                >
+                  <Settings className="w-4 h-4 flex-shrink-0" />
+                  Settings
+                </Link>
+              )}
             </nav>
 
             {/* Sign out */}

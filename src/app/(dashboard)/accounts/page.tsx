@@ -7,6 +7,8 @@ import { useBankAccounts } from '@/hooks/use-bank-accounts'
 import AccountModal from '@/components/accounts/account-modal'
 import { formatPKR } from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
+import { useTenant } from '@/lib/tenant-client'
+import AccessDenied from '@/components/access-denied'
 
 type ModalState =
   | { open: false }
@@ -19,6 +21,7 @@ function accountLabel(account: BankAccountBalance): string {
 }
 
 export default function AccountsPage() {
+  const { permissions } = useTenant()
   const { accounts, loading, error, createAccount, updateAccount } =
     useBankAccounts()
 
@@ -54,6 +57,8 @@ export default function AccountsPage() {
       setModal({ open: false })
     }
   }
+
+  if (!permissions.canViewAccounts) return <AccessDenied />
 
   return (
     <div>

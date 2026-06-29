@@ -16,10 +16,13 @@ import {
   BellRing,
   Landmark,
   BarChart3,
+  Settings,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useTenant } from '@/lib/tenant-client'
+import { navPermissionForHref } from '@/lib/permissions'
 
 const navItems = [
   { href: '/',           label: 'Dashboard', icon: LayoutDashboard },
@@ -45,6 +48,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
+  const tenant   = useTenant()
   const [overdueCount, setOverdueCount] = useState(0)
 
   useEffect(() => {
@@ -70,15 +74,32 @@ export default function Sidebar() {
         </div>
         <div className="min-w-0">
           <p className="text-white font-semibold text-sm leading-tight truncate">
-            Anda Distribution
+            {tenant.tenantName || 'Platform Admin'}
           </p>
-          <p className="text-stone-500 text-xs">Karachi</p>
+          {tenant.role === 'staff' && (
+            <span className="inline-block mt-0.5 text-2xs font-medium px-1.5 py-0.5
+                             rounded bg-amber-500/20 text-amber-400">
+              Staff
+            </span>
+          )}
+          {tenant.role === 'super_admin' && (
+            <span className="inline-block mt-0.5 text-2xs font-medium px-1.5 py-0.5
+                             rounded bg-blue-500/20 text-blue-400">
+              Admin
+            </span>
+          )}
+          {tenant.role === 'owner' && (
+            <p className="text-stone-500 text-xs">Owner</p>
+          )}
         </div>
       </div>
 
       {/* Nav links */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
+          const permission = navPermissionForHref(href)
+          if (permission && !tenant.permissions[permission]) return null
+
           const active = isActive(pathname, href)
           return (
             <Link
@@ -103,6 +124,21 @@ export default function Sidebar() {
             </Link>
           )
         })}
+        {tenant.permissions.canViewSettings && (
+          <Link
+            href="/settings"
+            className={[
+              'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium',
+              'transition-colors duration-150',
+              isActive(pathname, '/settings')
+                ? 'bg-brand-500 text-white'
+                : 'text-stone-400 hover:text-white hover:bg-stone-800',
+            ].join(' ')}
+          >
+            <Settings className="w-4 h-4 flex-shrink-0" />
+            Settings
+          </Link>
+        )}
       </nav>
 
       {/* Sign out */}

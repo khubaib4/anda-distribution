@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 
 export async function GET(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
@@ -9,12 +14,15 @@ export async function GET(request: Request) {
   const from       = searchParams.get('from')
   const to         = searchParams.get('to')
 
-  let query = supabase
-    .from('expenses')
-    .select(`
-      *,
-      category:expense_categories(id, name, icon)
-    `)
+  let query = tenantEq(
+    supabase
+      .from('expenses')
+      .select(`
+        *,
+        category:expense_categories(id, name, icon)
+      `),
+    tenantId,
+  )
     .order('expense_date', { ascending: false })
     .order('created_at',   { ascending: false })
 
@@ -32,6 +40,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
+  const writeTenantId = requireWriteTenantId(tenantId, request)
+  if (writeTenantId instanceof NextResponse) return writeTenantId
+
   const supabase = await createClient()
 
   const {
@@ -81,6 +96,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from('expenses')
     .insert({
+      tenant_id:       writeTenantId,
       category_id,
       amount_paisa,
       expense_date,

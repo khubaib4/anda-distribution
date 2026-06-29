@@ -1,41 +1,52 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
 
   // Fetch sales for this customer
-  const { data: salesData, error: salesError } = await supabase
-    .from('sales')
-    .select(`
-      id,
-      sale_date,
-      invoice_number,
-      payment_status,
-      items:sale_items(
-        quantity_trays,
-        price_per_tray_paisa
-      )
-    `)
-    .eq('customer_id', id)
-    .order('sale_date', { ascending: true })
-    .order('created_at', { ascending: true })
+  const { data: salesData, error: salesError } = await tenantEq(
+    supabase
+      .from('sales')
+      .select(`
+        id,
+        sale_date,
+        invoice_number,
+        payment_status,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa
+        )
+      `)
+      .eq('customer_id', id)
+      .order('sale_date', { ascending: true })
+      .order('created_at', { ascending: true }),
+    tenantId,
+  )
 
   if (salesError) {
     return NextResponse.json({ error: salesError.message }, { status: 500 })
   }
 
   // Fetch payments for this customer
-  const { data: paymentsData, error: paymentsError } = await supabase
-    .from('customer_payments')
-    .select('*')
-    .eq('customer_id', id)
-    .order('payment_date', { ascending: true })
-    .order('created_at', { ascending: true })
+  const { data: paymentsData, error: paymentsError } = await tenantEq(
+    supabase
+      .from('customer_payments')
+      .select('*')
+      .eq('customer_id', id)
+      .order('payment_date', { ascending: true })
+      .order('created_at', { ascending: true }),
+    tenantId,
+  )
 
   if (paymentsError) {
     return NextResponse.json(

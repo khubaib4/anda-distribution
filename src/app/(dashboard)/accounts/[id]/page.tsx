@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { formatPKR, formatDate } from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
+import { useTenant } from '@/lib/tenant-client'
+import AccessDenied from '@/components/access-denied'
 
 interface StatementEntry {
   id:              string
@@ -40,6 +42,7 @@ export default function AccountDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const { permissions } = useTenant()
   const { id } = use(params)
 
   const [account,         setAccount]         = useState<BankAccountBalance | null>(null)
@@ -73,6 +76,8 @@ export default function AccountDetailPage({
   }, [id])
 
   const balance = statementData?.summary.closing_balance ?? 0
+
+  if (!permissions.canViewAccounts) return <AccessDenied />
 
   return (
     <div className="max-w-2xl mx-auto">

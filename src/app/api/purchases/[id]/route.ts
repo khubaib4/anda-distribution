@@ -1,14 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { authorizeApi } from '@/lib/tenant-api'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('purchases')
     .select(`
       *,
@@ -21,7 +26,9 @@ export async function GET(
       )
     `)
     .eq('id', id)
-    .single()
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+
+  const { data, error } = await query.single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -46,6 +53,10 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorizeApi(request)
+  if (auth instanceof NextResponse) return auth
+  const { tenantId } = auth
+
   const { id } = await params
   const supabase  = await createClient()
   const body      = await request.json()
@@ -59,12 +70,13 @@ export async function PATCH(
   if (amount_paid_paisa !== undefined) updates.amount_paid_paisa = amount_paid_paisa
   if (notes             !== undefined) updates.notes             = notes
 
-  const { data, error } = await supabase
+  let updateQuery = supabase
     .from('purchases')
     .update(updates)
     .eq('id', id)
-    .select()
-    .single()
+  if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
+
+  const { data, error } = await updateQuery.select().single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

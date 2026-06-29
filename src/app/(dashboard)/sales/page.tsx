@@ -37,7 +37,7 @@ export default function SalesPage() {
   )
   const totalUnpaid = sales
     .filter(s => s.payment_status !== 'paid')
-    .reduce((s, sale) => s + (sale.total_paisa ?? 0), 0)
+    .reduce((s, sale) => s + (sale.remaining_paisa ?? sale.total_paisa ?? 0), 0)
 
   const hasFilters = status || customerId || from || to
 
@@ -246,9 +246,19 @@ export default function SalesPage() {
                           {formatQty(totalTrays)}
                         </td>
                         <td className="text-right">
-                          <span className="amount">
+                          <span className="amount text-stone-900">
                             {formatPKR(sale.total_paisa ?? 0)}
                           </span>
+                          {sale.payment_status === 'partial' && (
+                            <div className="mt-0.5">
+                              <p className="text-xs text-success">
+                                Paid: {formatPKR(sale.paid_paisa ?? 0)}
+                              </p>
+                              <p className="text-xs text-danger">
+                                Due: {formatPKR(sale.remaining_paisa ?? 0)}
+                              </p>
+                            </div>
+                          )}
                         </td>
                         <td>
                           <span className={paymentStatusClass(
@@ -294,6 +304,16 @@ export default function SalesPage() {
                       <p className="amount text-sm text-stone-900">
                         {formatPKR(sale.total_paisa ?? 0)}
                       </p>
+                      {sale.payment_status === 'partial' && (
+                        <div className="mt-0.5">
+                          <p className="text-xs text-success">
+                            Paid: {formatPKR(sale.paid_paisa ?? 0)}
+                          </p>
+                          <p className="text-xs text-danger">
+                            Due: {formatPKR(sale.remaining_paisa ?? 0)}
+                          </p>
+                        </div>
+                      )}
                       <span className={`${paymentStatusClass(
                         sale.payment_status
                       )} mt-1`}>

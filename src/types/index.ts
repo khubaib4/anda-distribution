@@ -113,12 +113,18 @@ export interface Sale {
   payment_status: PaymentStatus
   due_date: string | null
   amount_paid_paisa: number
+  discount_type: 'percentage' | 'fixed' | null
+  discount_value: number
+  discount_amount_paisa: number
   created_by: string | null
   created_at: string
   updated_at: string
   customer?: Customer
   items?: SaleItem[]
+  subtotal_paisa?: number
   total_paisa?: number
+  paid_paisa?: number
+  remaining_paisa?: number
 }
 
 export interface SaleItem {
@@ -127,6 +133,9 @@ export interface SaleItem {
   egg_category_id: string
   quantity_trays: number
   price_per_tray_paisa: number
+  discount_type: 'percentage' | 'fixed' | null
+  discount_value: number
+  discounted_price_paisa: number
   cost_per_tray_paisa: number
   total_paisa: number
   created_at: string
@@ -164,6 +173,9 @@ export interface StockMovement {
   egg_category_id: string
   movement_type: MovementType
   quantity_trays: number
+  quantity_eggs: number
+  reason: string | null
+  price_per_egg_paisa: number
   reference_id: string | null
   notes: string | null
   movement_date: string
@@ -175,6 +187,7 @@ export interface StockMovement {
 export interface CurrentStock {
   egg_category_id: string
   egg_category: string
+  quantity_eggs: number
   quantity_trays: number
   quantity_peti_approx: number
 }

@@ -1,6 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import {
+  computeDiscountedPricePaisa,
+  effectiveItemLineTotalPaisa,
+} from '@/lib/utils'
 import type { EggCategory } from '@/types'
 
 export interface SaleItemDraft {
@@ -9,6 +14,9 @@ export interface SaleItemDraft {
   quantity_peti:        number
   quantity_tray:        number
   price_per_tray_paisa: number
+  discount_type:        'percentage' | 'fixed' | null
+  discount_value:       number
+  discounted_price_paisa: number
 }
 
 interface Props {
@@ -19,6 +27,13 @@ interface Props {
   canRemove:  boolean
 }
 
+function formatRupees(paisa: number): string {
+  return (paisa / 100).toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+}
+
 export default function SaleItemRow({
   item,
   categories,
@@ -26,14 +41,61 @@ export default function SaleItemRow({
   onRemove,
   canRemove,
 }: Props) {
-  const totalTrays  = item.quantity_peti * 12 + item.quantity_tray
-  const totalPaisa  = totalTrays * item.price_per_tray_paisa
-  const totalRupees = totalPaisa / 100
+  const [discountOn, setDiscountOn] = useState(
+    item.discount_type !== null && item.discount_value > 0,
+  )
+
+  const totalTrays = item.quantity_peti * 12 + item.quantity_tray
+  const originalLineTotal = totalTrays * item.price_per_tray_paisa
+  const discountedLineTotal = effectiveItemLineTotalPaisa(item)
+  const hasDiscount = (item.discounted_price_paisa ?? 0) > 0
+  const totalSaving = hasDiscount
+    ? originalLineTotal - discountedLineTotal
+    : 0
+
+  function applyDiscount(
+    type: 'percentage' | 'fixed' | null,
+    value: number,
+    overrides?: Partial<
+      Pick<SaleItemDraft, 'quantity_peti' | 'quantity_tray' | 'price_per_tray_paisa'>
+    >,
+  ) {
+    const peti = overrides?.quantity_peti ?? item.quantity_peti
+    const tray = overrides?.quantity_tray ?? item.quantity_tray
+    const price = overrides?.price_per_tray_paisa ?? item.price_per_tray_paisa
+    const trays = peti * 12 + tray
+    const discounted = type
+      ? computeDiscountedPricePaisa(trays, price, type, value)
+      : 0
+
+    onChange(item.id, {
+      ...(overrides ?? {}),
+      discount_type:          type,
+      discount_value:         value,
+      discounted_price_paisa: discounted,
+    })
+  }
+
+  function toggleDiscount(on: boolean) {
+    setDiscountOn(on)
+    if (!on) {
+      applyDiscount(null, 0)
+    } else {
+      applyDiscount('percentage', item.discount_value || 0)
+    }
+  }
+
+  function savingMessage(): string | null {
+    if (!hasDiscount || totalSaving <= 0) return null
+    if (item.discount_type === 'percentage') {
+      return `Saving ${item.discount_value}% (₨${formatRupees(totalSaving)} total)`
+    }
+    return `Saving ₨${formatRupees(totalSaving)} total`
+  }
 
   return (
     <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 space-y-3">
 
-      {/* Category + remove */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex-1">
           <label className="label">Egg category</label>
@@ -62,7 +124,6 @@ export default function SaleItemRow({
         )}
       </div>
 
-      {/* Quantity */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Peti</label>
@@ -72,11 +133,16 @@ export default function SaleItemRow({
             className="input"
             placeholder="0"
             value={item.quantity_peti || ''}
-            onChange={e =>
-              onChange(item.id, {
-                quantity_peti: Math.max(0, parseInt(e.target.value) || 0),
-              })
-            }
+            onChange={e => {
+              const quantity_peti = Math.max(0, parseInt(e.target.value) || 0)
+              if (discountOn && item.discount_type) {
+                applyDiscount(item.discount_type, item.discount_value, {
+                  quantity_peti,
+                })
+              } else {
+                onChange(item.id, { quantity_peti })
+              }
+            }}
           />
         </div>
         <div>
@@ -88,19 +154,23 @@ export default function SaleItemRow({
             className="input"
             placeholder="0"
             value={item.quantity_tray || ''}
-            onChange={e =>
-              onChange(item.id, {
-                quantity_tray: Math.max(
-                  0,
-                  Math.min(11, parseInt(e.target.value) || 0)
-                ),
-              })
-            }
+            onChange={e => {
+              const quantity_tray = Math.max(
+                0,
+                Math.min(11, parseInt(e.target.value) || 0),
+              )
+              if (discountOn && item.discount_type) {
+                applyDiscount(item.discount_type, item.discount_value, {
+                  quantity_tray,
+                })
+              } else {
+                onChange(item.id, { quantity_tray })
+              }
+            }}
           />
         </div>
       </div>
 
-      {/* Price */}
       <div>
         <label className="label">Price per tray (₨)</label>
         <input
@@ -112,17 +182,89 @@ export default function SaleItemRow({
           value={item.price_per_tray_paisa
             ? item.price_per_tray_paisa / 100
             : ''}
-          onChange={e =>
-            onChange(item.id, {
-              price_per_tray_paisa: Math.round(
-                parseFloat(e.target.value || '0') * 100
-              ),
-            })
-          }
+          onChange={e => {
+            const price = Math.round(parseFloat(e.target.value || '0') * 100)
+            if (discountOn && item.discount_type) {
+              applyDiscount(item.discount_type, item.discount_value, {
+                price_per_tray_paisa: price,
+              })
+            } else {
+              onChange(item.id, { price_per_tray_paisa: price })
+            }
+          }}
         />
       </div>
 
-      {/* Line total */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => toggleDiscount(!discountOn)}
+          className={[
+            'text-xs font-medium px-2.5 py-1 rounded-md transition-colors',
+            discountOn
+              ? 'bg-brand-100 text-brand-700'
+              : 'bg-stone-200 text-stone-600 hover:bg-stone-300',
+          ].join(' ')}
+        >
+          {discountOn ? 'Discount on' : 'Discount'}
+        </button>
+
+        {discountOn && (
+          <div className="space-y-2 pl-1">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  applyDiscount('percentage', item.discount_value || 0)
+                }
+                className={[
+                  'flex-1 text-xs font-medium py-1.5 rounded-md border',
+                  item.discount_type === 'percentage'
+                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                    : 'border-stone-200 text-stone-600',
+                ].join(' ')}
+              >
+                %
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  applyDiscount('fixed', item.discount_value || 0)
+                }
+                className={[
+                  'flex-1 text-xs font-medium py-1.5 rounded-md border',
+                  item.discount_type === 'fixed'
+                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                    : 'border-stone-200 text-stone-600',
+                ].join(' ')}
+              >
+                Fixed ₨
+              </button>
+            </div>
+            <div>
+              <label className="label">Discount value</label>
+              <input
+                type="number"
+                min="0"
+                step={item.discount_type === 'fixed' ? '0.01' : '1'}
+                className="input"
+                placeholder="0"
+                value={item.discount_value || ''}
+                onChange={e => {
+                  const value = item.discount_type === 'fixed'
+                    ? parseFloat(e.target.value || '0')
+                    : parseInt(e.target.value || '0', 10)
+                  applyDiscount(item.discount_type ?? 'percentage', value)
+                }}
+              />
+            </div>
+            {savingMessage() && (
+              <p className="text-xs text-success">{savingMessage()}</p>
+            )}
+          </div>
+        )}
+      </div>
+
       {totalTrays > 0 && item.price_per_tray_paisa > 0 && (
         <div className="flex items-center justify-between pt-1
                         border-t border-stone-200">
@@ -130,12 +272,16 @@ export default function SaleItemRow({
             {totalTrays} tray{totalTrays !== 1 ? 's' : ''}
             {item.quantity_peti > 0 && ` (${item.quantity_peti} peti)`}
           </span>
-          <span className="amount text-sm text-stone-900">
-            ₨ {totalRupees.toLocaleString('en-IN', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 2,
-            })}
-          </span>
+          <div className="text-right">
+            {hasDiscount && (
+              <p className="text-xs text-stone-400 line-through">
+                ₨ {formatRupees(originalLineTotal)}
+              </p>
+            )}
+            <span className="amount text-sm text-stone-900">
+              ₨ {formatRupees(discountedLineTotal)}
+            </span>
+          </div>
         </div>
       )}
     </div>

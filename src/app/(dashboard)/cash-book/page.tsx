@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatPKR, formatDate, todayString } from '@/lib/utils'
+import { useTenant } from '@/lib/tenant-client'
+import AccessDenied from '@/components/access-denied'
 
 interface CashBookData {
   date: string
@@ -59,6 +61,7 @@ function formatMethod(method: string | null): string | null {
 }
 
 export default function CashBookPage() {
+  const { permissions } = useTenant()
   const [date,    setDate]    = useState(todayString())
   const [data,    setData]    = useState<CashBookData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,6 +89,8 @@ export default function CashBookPage() {
     data.cash_out.expenses.length > 0 ||
     data.cash_out.supplier_payments.length > 0
   )
+
+  if (!permissions.canViewCashBook) return <AccessDenied />
 
   return (
     <div>
