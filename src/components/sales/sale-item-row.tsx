@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   computeDiscountedPricePaisa,
@@ -44,6 +44,19 @@ export default function SaleItemRow({
   const [discountOn, setDiscountOn] = useState(
     item.discount_type !== null && item.discount_value > 0,
   )
+  const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
+    item.price_per_tray_paisa
+      ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
+      : '',
+  )
+
+  useEffect(() => {
+    setPricePerPetiInput(
+      item.price_per_tray_paisa
+        ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
+        : '',
+    )
+  }, [item.id])
 
   const totalTrays = item.quantity_peti * 12 + item.quantity_tray
   const originalLineTotal = totalTrays * item.price_per_tray_paisa
@@ -172,27 +185,34 @@ export default function SaleItemRow({
       </div>
 
       <div>
-        <label className="label">Price per tray (₨)</label>
+        <label className="label">Price per peti (₨)</label>
         <input
           type="number"
           min="0"
           step="0.01"
           className="input"
           placeholder="0.00"
-          value={item.price_per_tray_paisa
-            ? item.price_per_tray_paisa / 100
-            : ''}
+          value={pricePerPetiInput}
           onChange={e => {
-            const price = Math.round(parseFloat(e.target.value || '0') * 100)
+            const input = e.target.value
+            setPricePerPetiInput(input)
+            const price_per_tray_paisa = Math.round(
+              (parseFloat(input || '0') * 100) / 12,
+            )
             if (discountOn && item.discount_type) {
               applyDiscount(item.discount_type, item.discount_value, {
-                price_per_tray_paisa: price,
+                price_per_tray_paisa,
               })
             } else {
-              onChange(item.id, { price_per_tray_paisa: price })
+              onChange(item.id, { price_per_tray_paisa })
             }
           }}
         />
+        {item.price_per_tray_paisa > 0 && (
+          <p className="text-xs text-stone-500 mt-1">
+            = ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
