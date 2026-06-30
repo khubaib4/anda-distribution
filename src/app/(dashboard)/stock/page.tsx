@@ -14,6 +14,7 @@ import {
   formatQty,
 } from '@/lib/utils'
 import type { StockMovement } from '@/types'
+import { SkeletonCard, SkeletonList } from '@/components/ui/skeleton'
 
 const movementMeta: Record<string, {
   label: string
@@ -79,8 +80,10 @@ export default function StockPage() {
         <p className="section-title">Current stock</p>
 
         {stockLoading ? (
-          <div className="card p-6 text-center">
-            <p className="text-stone-400 text-sm">Loading stock…</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map(i => (
+              <SkeletonCard key={i} />
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -150,9 +153,7 @@ export default function StockPage() {
         </div>
 
         {movementsLoading ? (
-          <div className="card p-6 text-center">
-            <p className="text-stone-400 text-sm">Loading movements…</p>
-          </div>
+          <SkeletonList count={5} />
         ) : movements.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-stone-400 text-sm">No movements found</p>

@@ -5,6 +5,7 @@ import { Plus, ChevronDown, X } from 'lucide-react'
 import { useExpenses, useExpenseCategories } from '@/hooks/use-expenses'
 import ExpenseForm from '@/components/expenses/expense-form'
 import { formatPKR, formatDate } from '@/lib/utils'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 export default function ExpensesPage() {
   const [showForm,    setShowForm]    = useState(false)
@@ -228,11 +229,7 @@ export default function ExpensesPage() {
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="card p-8 text-center">
-          <p className="text-stone-400 text-sm">Loading expenses…</p>
-        </div>
-      )}
+      {loading && <SkeletonList count={6} />}
 
       {/* Empty */}
       {!loading && expenses.length === 0 && (

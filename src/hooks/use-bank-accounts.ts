@@ -1,29 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
 import type { BankAccountBalance } from '@/types'
+import { cache } from '@/lib/cache'
+import { useCachedFetch } from '@/hooks/use-cached-fetch'
+
+const LIST_TTL = 15000
 
 export function useBankAccounts() {
-  const [accounts, setAccounts] = useState<BankAccountBalance[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState<string | null>(null)
-
-  const fetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await window.fetch('/api/accounts')
-      if (!res.ok) throw new Error('Failed to load accounts')
-      const data = await res.json()
-      setAccounts(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { fetch() }, [fetch])
+  const { data, loading, error, refetch } = useCachedFetch<BankAccountBalance[]>(
+    '/api/accounts',
+    { ttl: LIST_TTL },
+  )
 
   async function createAccount(payload: {
     bank_name:      string
@@ -36,10 +23,11 @@ export function useBankAccounts() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error ?? 'Failed to create account')
-    await fetch()
-    return data
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to create account')
+    cache.invalidatePattern('/api/accounts')
+    await refetch()
+    return result
   }
 
   async function updateAccount(
@@ -50,24 +38,25 @@ export function useBankAccounts() {
       account_number: string
       nickname:       string
       is_active:      boolean
-    }>
+    }>,
   ) {
     const res = await window.fetch(`/api/accounts/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error ?? 'Failed to update account')
-    await fetch()
-    return data
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to update account')
+    cache.invalidatePattern('/api/accounts')
+    await refetch()
+    return result
   }
 
   return {
-    accounts,
+    accounts: data ?? [],
     loading,
     error,
-    refetch: fetch,
+    refetch,
     createAccount,
     updateAccount,
   }

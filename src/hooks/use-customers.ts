@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useMemo } from 'react'
 import type { CustomerBalance } from '@/types'
+import { cache } from '@/lib/cache'
+import { useCachedFetch } from '@/hooks/use-cached-fetch'
+
+const LIST_TTL = 15000
 
 interface Filters {
   type?:     string
@@ -9,33 +13,18 @@ interface Filters {
 }
 
 export function useCustomers(filters: Filters = {}) {
-  const [customers, setCustomers] = useState<CustomerBalance[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState<string | null>(null)
-
-  const fetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams()
-      if (filters.type)     params.set('type',     filters.type)
-      if (filters.inactive) params.set('inactive', 'true')
-
-      const qs  = params.toString()
-      const res = await window.fetch(
-        `/api/customers${qs ? `?${qs}` : ''}`
-      )
-      if (!res.ok) throw new Error('Failed to load customers')
-      const data = await res.json()
-      setCustomers(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
+  const url = useMemo(() => {
+    const params = new URLSearchParams()
+    if (filters.type)     params.set('type',     filters.type)
+    if (filters.inactive) params.set('inactive', 'true')
+    const qs = params.toString()
+    return `/api/customers${qs ? `?${qs}` : ''}`
   }, [filters.type, filters.inactive])
 
-  useEffect(() => { fetch() }, [fetch])
+  const { data, loading, error, refetch } = useCachedFetch<CustomerBalance[]>(
+    url,
+    { ttl: LIST_TTL },
+  )
 
   async function createCustomer(payload: {
     contact_name:  string
@@ -50,10 +39,11 @@ export function useCustomers(filters: Filters = {}) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error ?? 'Failed to create customer')
-    await fetch()
-    return data
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to create customer')
+    cache.invalidatePattern('/api/customers')
+    await refetch()
+    return result
   }
 
   async function updateCustomer(
@@ -66,24 +56,25 @@ export function useCustomers(filters: Filters = {}) {
       customer_type: string
       notes:         string
       is_active:     boolean
-    }>
+    }>,
   ) {
     const res = await window.fetch(`/api/customers/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error ?? 'Failed to update customer')
-    await fetch()
-    return data
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to update customer')
+    cache.invalidatePattern('/api/customers')
+    await refetch()
+    return result
   }
 
   return {
-    customers,
+    customers: data ?? [],
     loading,
     error,
-    refetch: fetch,
+    refetch,
     createCustomer,
     updateCustomer,
   }

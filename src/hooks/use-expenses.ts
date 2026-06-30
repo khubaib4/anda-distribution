@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Expense, ExpenseCategory } from '@/types'
+import { cache } from '@/lib/cache'
+import { useCachedFetch } from '@/hooks/use-cached-fetch'
+
+const LIST_TTL = 15000
 
 interface Filters {
   category_id?: string
@@ -10,34 +14,19 @@ interface Filters {
 }
 
 export function useExpenses(filters: Filters = {}) {
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState<string | null>(null)
-
-  const fetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams()
-      if (filters.category_id) params.set('category_id', filters.category_id)
-      if (filters.from)        params.set('from',        filters.from)
-      if (filters.to)          params.set('to',          filters.to)
-
-      const qs  = params.toString()
-      const res = await window.fetch(
-        `/api/expenses${qs ? `?${qs}` : ''}`
-      )
-      if (!res.ok) throw new Error('Failed to load expenses')
-      const data = await res.json()
-      setExpenses(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
+  const url = useMemo(() => {
+    const params = new URLSearchParams()
+    if (filters.category_id) params.set('category_id', filters.category_id)
+    if (filters.from)        params.set('from',        filters.from)
+    if (filters.to)          params.set('to',          filters.to)
+    const qs = params.toString()
+    return `/api/expenses${qs ? `?${qs}` : ''}`
   }, [filters.category_id, filters.from, filters.to])
 
-  useEffect(() => { fetch() }, [fetch])
+  const { data, loading, error, refetch } = useCachedFetch<Expense[]>(
+    url,
+    { ttl: LIST_TTL },
+  )
 
   async function createExpense(payload: {
     category_id:     string
@@ -56,13 +45,20 @@ export function useExpenses(filters: Filters = {}) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error ?? 'Failed to create expense')
-    await fetch()
-    return data as Expense
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to create expense')
+    cache.invalidatePattern('/api/expenses')
+    await refetch()
+    return result as Expense
   }
 
-  return { expenses, loading, error, refetch: fetch, createExpense }
+  return {
+    expenses: data ?? [],
+    loading,
+    error,
+    refetch,
+    createExpense,
+  }
 }
 
 export function useExpenseCategories() {

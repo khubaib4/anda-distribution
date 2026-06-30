@@ -13,6 +13,7 @@ import {
   paymentStatusClass,
   paymentStatusLabel,
 } from '@/lib/utils'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 export default function SalesPage() {
   const [status,      setStatus]      = useState('')
@@ -172,11 +173,7 @@ export default function SalesPage() {
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="card p-8 text-center">
-          <p className="text-stone-400 text-sm">Loading sales…</p>
-        </div>
-      )}
+      {loading && <SkeletonList count={6} />}
 
       {/* Empty */}
       {!loading && sales.length === 0 && (

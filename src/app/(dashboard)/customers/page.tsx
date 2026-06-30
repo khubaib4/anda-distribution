@@ -7,6 +7,7 @@ import { useCustomers } from '@/hooks/use-customers'
 import CustomerModal from '@/components/customers/customer-modal'
 import { formatPKR, customerTypeLabel } from '@/lib/utils'
 import type { CustomerBalance } from '@/types'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 type ModalState =
   | { open: false }
@@ -143,11 +144,7 @@ export default function CustomersPage() {
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="card p-8 text-center">
-          <p className="text-stone-400 text-sm">Loading customers…</p>
-        </div>
-      )}
+      {loading && <SkeletonList count={6} />}
 
       {/* Empty */}
       {!loading && customers.length === 0 && (

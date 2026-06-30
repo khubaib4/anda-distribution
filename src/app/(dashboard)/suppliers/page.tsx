@@ -7,6 +7,7 @@ import { useSuppliers } from '@/hooks/use-suppliers'
 import SupplierModal from '@/components/suppliers/supplier-modal'
 import { formatPKR } from '@/lib/utils'
 import type { SupplierBalance } from '@/types'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 type ModalState =
   | { open: false }
@@ -97,11 +98,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="card p-8 text-center">
-          <p className="text-stone-400 text-sm">Loading suppliers…</p>
-        </div>
-      )}
+      {loading && <SkeletonList count={5} />}
 
       {/* Empty */}
       {!loading && filtered.length === 0 && (

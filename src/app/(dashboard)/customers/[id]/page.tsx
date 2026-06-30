@@ -16,6 +16,7 @@ import {
   todayString,
 } from '@/lib/utils'
 import type { CustomerBalance, BankAccountBalance } from '@/types'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -372,11 +373,7 @@ export default function CustomerDetailPage({
       <div>
         <p className="section-title mb-3">Account ledger</p>
 
-        {loadingLedger && (
-          <div className="card p-8 text-center">
-            <p className="text-stone-400 text-sm">Loading ledger…</p>
-          </div>
-        )}
+        {loadingLedger && <SkeletonList count={5} />}
 
         {!loadingLedger && ledgerData?.ledger.length === 0 && (
           <div className="card p-8 text-center">

@@ -18,6 +18,7 @@ import {
   effectiveItemLineTotalPaisa,
   computeDiscountAmountPaisa,
 } from '@/lib/utils'
+import { cache } from '@/lib/cache'
 import type { BankAccountBalance } from '@/types'
 
 function accountLabel(account: BankAccountBalance): string {
@@ -222,6 +223,7 @@ export default function NewSalePage() {
         return
       }
 
+      cache.invalidatePattern('/api/sales')
       router.push('/sales')
     } catch {
       setError('Network error — please try again')

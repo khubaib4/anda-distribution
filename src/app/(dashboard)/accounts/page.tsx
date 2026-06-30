@@ -9,6 +9,7 @@ import { formatPKR } from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { SkeletonList } from '@/components/ui/skeleton'
 
 type ModalState =
   | { open: false }
@@ -106,11 +107,7 @@ export default function AccountsPage() {
         </button>
       </div>
 
-      {loading && (
-        <div className="card p-8 text-center">
-          <p className="text-stone-400 text-sm">Loading accounts…</p>
-        </div>
-      )}
+      {loading && <SkeletonList count={5} />}
 
       {!loading && filtered.length === 0 && (
         <div className="card">
