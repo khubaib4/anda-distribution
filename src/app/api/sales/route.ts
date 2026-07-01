@@ -159,10 +159,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const { count, error: countError } = await tenantEq(
-    supabase.from('sales').select('*', { count: 'exact', head: true }),
-    tenantId,
-  )
+  const { count, error: countError } = await supabase
+    .from('sales')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', writeTenantId)
 
   if (countError) {
     return NextResponse.json(

@@ -9,14 +9,7 @@ import AccessDenied from '@/components/access-denied'
 interface CashBookData {
   date: string
   cash_in: {
-    sales: Array<{
-      id:             string
-      invoice_number: string | null
-      customer_name:  string
-      business_name:  string | null
-      total_paisa:    number
-    }>
-    customer_payments: Array<{
+    payments: Array<{
       id:             string
       customer_id:    string
       customer_name:  string
@@ -84,8 +77,7 @@ export default function CashBookPage() {
   useEffect(() => { load() }, [load])
 
   const hasMovements = data && (
-    data.cash_in.sales.length > 0 ||
-    data.cash_in.customer_payments.length > 0 ||
+    data.cash_in.payments.length > 0 ||
     data.cash_out.expenses.length > 0 ||
     data.cash_out.supplier_payments.length > 0
   )
@@ -164,33 +156,13 @@ export default function CashBookPage() {
             <div>
               <p className="section-title text-success">Cash in</p>
               <div className="card divide-y divide-stone-100">
-                {data.cash_in.sales.length === 0 &&
-                 data.cash_in.customer_payments.length === 0 && (
+                {data.cash_in.payments.length === 0 && (
                   <p className="px-4 py-6 text-sm text-stone-400 text-center">
                     No cash received
                   </p>
                 )}
 
-                {data.cash_in.sales.map(sale => (
-                  <div
-                    key={sale.id}
-                    className="flex items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-stone-900 truncate">
-                        Sale — {sale.customer_name}
-                      </p>
-                      <p className="text-xs text-stone-400">
-                        {sale.invoice_number ?? '—'} · Paid
-                      </p>
-                    </div>
-                    <p className="amount text-sm font-medium text-success flex-shrink-0">
-                      +{formatPKR(sale.total_paisa)}
-                    </p>
-                  </div>
-                ))}
-
-                {data.cash_in.customer_payments.map(payment => (
+                {data.cash_in.payments.map(payment => (
                   <div
                     key={payment.id}
                     className="flex items-center justify-between gap-3 px-4 py-3"

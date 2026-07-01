@@ -14,27 +14,10 @@ export async function GET(request: Request) {
   const date  = searchParams.get('date') || today
 
   const [
-    { data: salesData,         error: salesError         },
     { data: customerPayments,  error: customerPayError   },
     { data: expensesData,      error: expensesError      },
     { data: supplierPayments,  error: supplierPayError   },
   ] = await Promise.all([
-    tenantEq(
-      supabase
-        .from('sales')
-        .select(`
-          id,
-          invoice_number,
-          sale_date,
-          payment_status,
-          customer:customers(id, contact_name, business_name),
-          items:sale_items(quantity_trays, price_per_tray_paisa)
-        `)
-        .eq('sale_date', date)
-        .eq('payment_status', 'paid')
-        .order('created_at', { ascending: true }),
-      tenantId,
-    ),
     tenantEq(
       supabase
         .from('customer_payments')
@@ -85,9 +68,6 @@ export async function GET(request: Request) {
     ),
   ])
 
-  if (salesError) {
-    return NextResponse.json({ error: salesError.message }, { status: 500 })
-  }
   if (customerPayError) {
     return NextResponse.json({ error: customerPayError.message }, { status: 500 })
   }
@@ -98,27 +78,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: supplierPayError.message }, { status: 500 })
   }
 
-  const sales = (salesData ?? []).map(sale => {
-    const customer = Array.isArray(sale.customer)
-      ? sale.customer[0]
-      : sale.customer
-    const total_paisa = (sale.items ?? []).reduce(
-      (sum: number, item: {
-        quantity_trays: number
-        price_per_tray_paisa: number
-      }) => sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    )
-    return {
-      id:             sale.id,
-      invoice_number: sale.invoice_number,
-      customer_name:  customer?.contact_name ?? '—',
-      business_name:  customer?.business_name ?? null,
-      total_paisa,
-    }
-  })
-
-  const customer_payments = (customerPayments ?? []).map(p => {
+  const payments = (customerPayments ?? []).map(p => {
     const customer = Array.isArray(p.customer) ? p.customer[0] : p.customer
     return {
       id:             p.id,
@@ -155,23 +115,18 @@ export async function GET(request: Request) {
     }
   })
 
-  const salesTotal = sales.reduce((s, r) => s + r.total_paisa, 0)
-  const customerPaymentsTotal = customer_payments.reduce(
-    (s, r) => s + r.amount_paisa, 0
-  )
+  const cashInTotal = payments.reduce((s, r) => s + r.amount_paisa, 0)
   const expensesTotal = expenses.reduce((s, r) => s + r.amount_paisa, 0)
   const supplierPaymentsTotal = supplier_payments.reduce(
-    (s, r) => s + r.amount_paisa, 0
+    (s, r) => s + r.amount_paisa, 0,
   )
 
-  const cashInTotal  = salesTotal + customerPaymentsTotal
   const cashOutTotal = expensesTotal + supplierPaymentsTotal
 
   return NextResponse.json({
     date,
     cash_in: {
-      sales,
-      customer_payments,
+      payments,
       total: cashInTotal,
     },
     cash_out: {

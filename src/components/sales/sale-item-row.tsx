@@ -28,7 +28,7 @@ interface Props {
 }
 
 function formatRupees(paisa: number): string {
-  return (paisa / 100).toLocaleString('en-IN', {
+  return (Math.round(paisa) / 100).toLocaleString('en-IN', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })
@@ -62,9 +62,6 @@ export default function SaleItemRow({
   const originalLineTotal = totalTrays * item.price_per_tray_paisa
   const discountedLineTotal = effectiveItemLineTotalPaisa(item)
   const hasDiscount = (item.discounted_price_paisa ?? 0) > 0
-  const totalSaving = hasDiscount
-    ? originalLineTotal - discountedLineTotal
-    : 0
 
   function applyDiscount(
     type: 'percentage' | 'fixed' | null,
@@ -99,11 +96,19 @@ export default function SaleItemRow({
   }
 
   function savingMessage(): string | null {
-    if (!hasDiscount || totalSaving <= 0) return null
-    if (item.discount_type === 'percentage') {
-      return `Saving ${item.discount_value}% (₨${formatRupees(totalSaving)} total)`
+    if (!hasDiscount) return null
+    if (item.discount_type === 'fixed') {
+      const saving = parseFloat(String(item.discount_value))
+      if (saving <= 0) return null
+      return `Saving ₨${saving.toLocaleString('en-IN')} total`
     }
-    return `Saving ₨${formatRupees(totalSaving)} total`
+    if (item.discount_type === 'percentage') {
+      const savingAmount =
+        (originalLineTotal * item.discount_value / 100) / 100
+      if (savingAmount <= 0) return null
+      return `Saving ${item.discount_value}% (₨${savingAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total)`
+    }
+    return null
   }
 
   return (
