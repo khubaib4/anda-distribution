@@ -1,14 +1,15 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { EggCategory } from '@/types'
 
 export interface PurchaseItemDraft {
-  id:                   string   // local draft ID (crypto.randomUUID())
+  id:                   string
   egg_category_id:      string
   quantity_peti:        number
   quantity_tray:        number
-  price_per_tray_paisa: number   // stored as paisa, input as rupees
+  price_per_tray_paisa: number
 }
 
 interface Props {
@@ -26,6 +27,20 @@ export default function PurchaseItemRow({
   onRemove,
   canRemove,
 }: Props) {
+  const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
+    item.price_per_tray_paisa
+      ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
+      : '',
+  )
+
+  useEffect(() => {
+    setPricePerPetiInput(
+      item.price_per_tray_paisa
+        ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
+        : '',
+    )
+  }, [item.id])
+
   const totalTrays  = item.quantity_peti * 12 + item.quantity_tray
   const totalPaisa  = totalTrays * item.price_per_tray_paisa
   const totalRupees = totalPaisa / 100
@@ -33,7 +48,6 @@ export default function PurchaseItemRow({
   return (
     <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 space-y-3">
 
-      {/* Row 1: Category + Remove */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex-1">
           <label className="label">Egg category</label>
@@ -60,7 +74,6 @@ export default function PurchaseItemRow({
         )}
       </div>
 
-      {/* Row 2: Quantity peti + tray */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Peti</label>
@@ -91,25 +104,32 @@ export default function PurchaseItemRow({
         </div>
       </div>
 
-      {/* Row 3: Price per tray */}
       <div>
-        <label className="label">Price per tray (₨)</label>
+        <label className="label">Price per peti (₨)</label>
         <input
           type="number"
           min="0"
           step="0.01"
           className="input"
           placeholder="0.00"
-          value={item.price_per_tray_paisa ? item.price_per_tray_paisa / 100 : ''}
-          onChange={e =>
+          value={pricePerPetiInput}
+          onChange={e => {
+            const input = e.target.value
+            setPricePerPetiInput(input)
             onChange(item.id, {
-              price_per_tray_paisa: Math.round(parseFloat(e.target.value || '0') * 100),
+              price_per_tray_paisa: Math.round(
+                (parseFloat(input || '0') * 100) / 12,
+              ),
             })
-          }
+          }}
         />
+        {item.price_per_tray_paisa > 0 && (
+          <p className="text-xs text-stone-500 mt-1">
+            = ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
+          </p>
+        )}
       </div>
 
-      {/* Row 4: Computed total */}
       {totalTrays > 0 && item.price_per_tray_paisa > 0 && (
         <div className="flex items-center justify-between pt-1 border-t border-stone-200">
           <span className="text-xs text-stone-500">

@@ -8,7 +8,6 @@ import { useEggCategories } from '@/hooks/use-egg-categories'
 import AdjustmentModal from '@/components/stock/adjustment-modal'
 import {
   formatEggs,
-  formatTrayEquivalent,
   formatDate,
   formatPKRDecimal,
   formatQty,
@@ -26,6 +25,12 @@ const movementMeta: Record<string, {
   adjustment_in:  { label: 'Adj. In',    color: 'text-success', sign: '+' },
   adjustment_out: { label: 'Adj. Out',   color: 'text-danger',  sign: '-' },
   opening_stock:  { label: 'Opening',    color: 'text-info',    sign: '+' },
+}
+
+function stockFromEggs(eggs: number) {
+  const peti  = Math.floor(eggs / 360)
+  const trays = Math.floor((eggs % 360) / 30)
+  return { peti, trays, eggs }
 }
 
 function movementQuantity(m: StockMovement): string {
@@ -56,6 +61,7 @@ export default function StockPage() {
     (s, c) => s + (c.quantity_eggs ?? Math.round(c.quantity_trays * 30)),
     0,
   )
+  const totalPeti = Math.floor(totalEggs / 360)
 
   return (
     <div>
@@ -63,7 +69,7 @@ export default function StockPage() {
         <div>
           <h1 className="page-title">Stock</h1>
           <p className="page-subtitle">
-            {stockLoading ? '…' : `${formatEggs(totalEggs)} total`}
+            {stockLoading ? '…' : `${totalPeti} peti total`}
           </p>
         </div>
         <button
@@ -90,6 +96,7 @@ export default function StockPage() {
             {stock.map(cat => {
               const eggs = cat.quantity_eggs
                 ?? Math.round(cat.quantity_trays * 30)
+              const { peti, trays } = stockFromEggs(eggs)
               const low = eggs < 720 && eggs > 0
 
               return (
@@ -102,12 +109,17 @@ export default function StockPage() {
                   </p>
 
                   <p className="qty text-2xl font-semibold text-stone-900">
-                    {eggs.toLocaleString('en-IN')}
-                    <span className="text-base ml-1">🥚</span>
+                    {peti} peti
                   </p>
 
+                  {trays > 0 && (
+                    <p className="text-sm text-stone-600 mt-0.5">
+                      {trays} tray{trays !== 1 ? 's' : ''}
+                    </p>
+                  )}
+
                   <p className="text-2xs text-stone-400 mt-1">
-                    {formatTrayEquivalent(eggs)}
+                    {eggs.toLocaleString('en-IN')} eggs total
                   </p>
 
                   {low && (
