@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, Pencil } from 'lucide-react'
 import {
   formatPKR,
   formatDate,
@@ -22,6 +23,7 @@ export default function PurchaseDetailModal({
   onClose,
   onUpdated,
 }: Props) {
+  const router = useRouter()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
@@ -95,9 +97,18 @@ export default function PurchaseDetailModal({
               </p>
             )}
           </div>
-          <button onClick={onClose} className="btn-ghost p-1.5 -mr-1.5">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => router.push(`/purchases/${purchaseId}/edit`)}
+              className="btn-ghost p-1.5 text-xs flex items-center gap-1"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Edit purchase</span>
+            </button>
+            <button onClick={onClose} className="btn-ghost p-1.5 -mr-1.5">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body — scrollable */}

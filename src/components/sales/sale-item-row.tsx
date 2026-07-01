@@ -5,6 +5,7 @@ import { Trash2 } from 'lucide-react'
 import {
   computeDiscountedPricePaisa,
   effectiveItemLineTotalPaisa,
+  petiPriceStringFromTrayPaisa,
 } from '@/lib/utils'
 import type { EggCategory } from '@/types'
 
@@ -45,17 +46,11 @@ export default function SaleItemRow({
     item.discount_type !== null && item.discount_value > 0,
   )
   const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
-    item.price_per_tray_paisa
-      ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
-      : '',
+    petiPriceStringFromTrayPaisa(item.price_per_tray_paisa),
   )
 
   useEffect(() => {
-    setPricePerPetiInput(
-      item.price_per_tray_paisa
-        ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
-        : '',
-    )
+    setPricePerPetiInput(petiPriceStringFromTrayPaisa(item.price_per_tray_paisa))
   }, [item.id])
 
   const totalTrays = item.quantity_peti * 12 + item.quantity_tray

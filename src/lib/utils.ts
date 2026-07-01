@@ -121,6 +121,12 @@ export function todayString(): string {
   return new Date().toISOString().split('T')[0]
 }
 
+export function petiPriceStringFromTrayPaisa(pricePerTrayPaisa: number): string {
+  if (!pricePerTrayPaisa) return ''
+  const rawPetiPrice = (pricePerTrayPaisa * 12) / 100
+  return parseFloat(rawPetiPrice.toFixed(2)).toString()
+}
+
 // Generate invoice number
 // PUR-20250612-482 or SAL-20250612-482
 export function generateInvoiceNumber(prefix: 'PUR' | 'SAL'): string {

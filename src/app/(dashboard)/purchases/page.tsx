@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, ChevronDown, Pencil } from 'lucide-react'
 import { usePurchases } from '@/hooks/use-purchases'
 import { useSuppliers } from '@/hooks/use-suppliers'
 import PurchaseDetailModal from '@/components/purchases/purchase-detail-modal'
@@ -15,6 +16,8 @@ import {
 } from '@/lib/utils'
 
 export default function PurchasesPage() {
+  const router = useRouter()
+
   // Filters
   const [status,     setStatus]     = useState('')
   const [supplierId, setSupplierId] = useState('')
@@ -208,6 +211,7 @@ export default function PurchasesPage() {
                     <th>Items</th>
                     <th className="text-right">Total</th>
                     <th>Status</th>
+                    <th className="w-12" />
                   </tr>
                 </thead>
                 <tbody>
@@ -244,6 +248,18 @@ export default function PurchasesPage() {
                           <span className={paymentStatusClass(p.payment_status)}>
                             {paymentStatusLabel(p.payment_status)}
                           </span>
+                        </td>
+                        <td>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              router.push(`/purchases/${p.id}/edit`)
+                            }}
+                            className="btn-ghost p-1.5"
+                            aria-label="Edit purchase"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
                         </td>
                       </tr>
                     )
@@ -285,6 +301,16 @@ export default function PurchasesPage() {
                       <span className={`${paymentStatusClass(p.payment_status)} mt-1`}>
                         {paymentStatusLabel(p.payment_status)}
                       </span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          router.push(`/purchases/${p.id}/edit`)
+                        }}
+                        className="btn-ghost p-1.5 mt-1"
+                        aria-label="Edit purchase"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>

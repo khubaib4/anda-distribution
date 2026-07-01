@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichExpensesWithPartnerNames } from '@/lib/expense-partners'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const EXPENSE_SELECT = `
   *,
@@ -52,6 +53,11 @@ export async function PATCH(
 
   const { id } = await params
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   const body = await request.json()
 
   const {
@@ -87,6 +93,24 @@ export async function PATCH(
       { error: 'Partner is required when paid by partner' },
       { status: 400 },
     )
+  }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('expenses')
+    .select(`
+      description,
+      paid_by,
+      amount_paisa,
+      expense_date,
+      paid_by_partner_id,
+      paid_by_partner_source
+    `)
+    .eq('id', id)
+    .eq('tenant_id', writeTenantId)
+    .single()
+
+  if (fetchError || !existing) {
+    return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
   }
 
   const updates: Record<string, unknown> = {
@@ -129,6 +153,81 @@ export async function PATCH(
       { error: status === 404 ? 'Expense not found' : error.message },
       { status },
     )
+  }
+
+  const admin = createAdminClient()
+  const oldCapitalNotes = `Paid expense: ${existing.description.trim()}`
+  const newCapitalNotes = `Paid expense: ${data.description.trim()}`
+  const finalPaidBy = data.paid_by ?? 'business'
+
+  if (finalPaidBy !== 'partner') {
+    await admin
+      .from('capital_transactions')
+      .delete()
+      .eq('tenant_id', writeTenantId)
+      .eq('notes', oldCapitalNotes)
+
+    if (oldCapitalNotes !== newCapitalNotes) {
+      await admin
+        .from('capital_transactions')
+        .delete()
+        .eq('tenant_id', writeTenantId)
+        .eq('notes', newCapitalNotes)
+    }
+  } else if (data.paid_by_partner_id) {
+    const partnerSource = data.paid_by_partner_source
+    const capitalFields: Record<string, unknown> = {
+      amount_paisa:     data.amount_paisa,
+      transaction_date: data.expense_date,
+      notes:            newCapitalNotes,
+      updated_at:       new Date().toISOString(),
+    }
+
+    if (partnerSource === 'partner') {
+      capitalFields.partner_id         = null
+      capitalFields.partner_profile_id = data.paid_by_partner_id
+    } else {
+      capitalFields.partner_id         = data.paid_by_partner_id
+      capitalFields.partner_profile_id = null
+    }
+
+    const { data: existingCapital } = await admin
+      .from('capital_transactions')
+      .select('id')
+      .eq('tenant_id', writeTenantId)
+      .eq('notes', oldCapitalNotes)
+      .maybeSingle()
+
+    if (existingCapital) {
+      const { error: capitalError } = await admin
+        .from('capital_transactions')
+        .update(capitalFields)
+        .eq('id', existingCapital.id)
+
+      if (capitalError) {
+        return NextResponse.json(
+          { error: `Expense saved but capital update failed: ${capitalError.message}` },
+          { status: 500 },
+        )
+      }
+    } else {
+      const { error: capitalError } = await admin
+        .from('capital_transactions')
+        .insert({
+          tenant_id:  writeTenantId,
+          type:       'contribution',
+          reference:  null,
+          created_by: user?.id || null,
+          ...capitalFields,
+        })
+
+      if (capitalError) {
+        return NextResponse.json(
+          { error: `Expense saved but capital entry failed: ${capitalError.message}` },
+          { status: 500 },
+        )
+      }
+    }
   }
 
   const [enriched] = await enrichExpensesWithPartnerNames(supabase, [data])

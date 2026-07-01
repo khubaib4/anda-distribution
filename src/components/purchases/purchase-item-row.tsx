@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { petiPriceStringFromTrayPaisa } from '@/lib/utils'
 import type { EggCategory } from '@/types'
 
 export interface PurchaseItemDraft {
@@ -28,17 +29,11 @@ export default function PurchaseItemRow({
   canRemove,
 }: Props) {
   const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
-    item.price_per_tray_paisa
-      ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
-      : '',
+    petiPriceStringFromTrayPaisa(item.price_per_tray_paisa),
   )
 
   useEffect(() => {
-    setPricePerPetiInput(
-      item.price_per_tray_paisa
-        ? (item.price_per_tray_paisa * 12 / 100).toFixed(2)
-        : '',
-    )
+    setPricePerPetiInput(petiPriceStringFromTrayPaisa(item.price_per_tray_paisa))
   }, [item.id])
 
   const totalTrays  = item.quantity_peti * 12 + item.quantity_tray
