@@ -280,6 +280,7 @@ export default function NewSalePage() {
               type="date"
               className="input"
               value={saleDate}
+              max={todayString()}
               onChange={e => setSaleDate(e.target.value)}
               required
             />

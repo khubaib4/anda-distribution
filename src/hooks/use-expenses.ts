@@ -28,7 +28,7 @@ export function useExpenses(filters: Filters = {}) {
     { ttl: LIST_TTL },
   )
 
-  async function createExpense(payload: {
+  type ExpensePayload = {
     category_id:     string
     amount_paisa:    number
     expense_date:    string
@@ -39,7 +39,12 @@ export function useExpenses(filters: Filters = {}) {
     labor_type?:     string
     notes?:          string
     bank_account_id?: string
-  }) {
+    paid_by?:        'business' | 'partner'
+    paid_by_partner_id?: string
+    paid_by_partner_source?: 'profile' | 'partner'
+  }
+
+  async function createExpense(payload: ExpensePayload) {
     const res = await window.fetch('/api/expenses', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,12 +57,37 @@ export function useExpenses(filters: Filters = {}) {
     return result as Expense
   }
 
+  async function updateExpense(id: string, payload: ExpensePayload) {
+    const res = await window.fetch(`/api/expenses/${id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    })
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to update expense')
+    cache.invalidatePattern('/api/expenses')
+    await refetch()
+    return result as Expense
+  }
+
+  async function deleteExpense(id: string) {
+    const res = await window.fetch(`/api/expenses/${id}`, {
+      method: 'DELETE',
+    })
+    const result = await res.json()
+    if (!res.ok) throw new Error(result.error ?? 'Failed to delete expense')
+    cache.invalidatePattern('/api/expenses')
+    await refetch()
+  }
+
   return {
     expenses: data ?? [],
     loading,
     error,
     refetch,
     createExpense,
+    updateExpense,
+    deleteExpense,
   }
 }
 

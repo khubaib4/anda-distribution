@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { enrichExpensesWithPartnerNames } from '@/lib/expense-partners'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -36,7 +37,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json(data)
+  const enriched = await enrichExpensesWithPartnerNames(supabase, data ?? [])
+  return NextResponse.json(enriched)
 }
 
 export async function POST(request: Request) {
@@ -66,6 +68,9 @@ export async function POST(request: Request) {
     labor_type,
     notes,
     bank_account_id,
+    paid_by,
+    paid_by_partner_id,
+    paid_by_partner_source,
   } = body
 
   if (!category_id) {
@@ -93,21 +98,35 @@ export async function POST(request: Request) {
     )
   }
 
+  const paidBy = paid_by === 'partner' ? 'partner' : 'business'
+
+  if (paidBy === 'partner' && !paid_by_partner_id) {
+    return NextResponse.json(
+      { error: 'Partner is required when paid by partner' },
+      { status: 400 },
+    )
+  }
+
+  const trimmedDescription = description.trim()
+
   const { data, error } = await supabase
     .from('expenses')
     .insert({
-      tenant_id:       writeTenantId,
+      tenant_id:              writeTenantId,
       category_id,
       amount_paisa,
       expense_date,
-      description:     description.trim(),
-      vehicle:         vehicle         || null,
-      odometer_km:     odometer_km     || null,
-      worker_name:     worker_name     || null,
-      labor_type:      labor_type      || null,
-      notes:           notes           || null,
-      bank_account_id: bank_account_id || null,
-      created_by:      user?.id        || null,
+      description:            trimmedDescription,
+      vehicle:                vehicle                || null,
+      odometer_km:            odometer_km            || null,
+      worker_name:            worker_name            || null,
+      labor_type:             labor_type             || null,
+      notes:                  notes                  || null,
+      bank_account_id:        bank_account_id        || null,
+      paid_by:                paidBy,
+      paid_by_partner_id:     paidBy === 'partner' ? paid_by_partner_id : null,
+      paid_by_partner_source: paidBy === 'partner' ? paid_by_partner_source : null,
+      created_by:             user?.id               || null,
     })
     .select(`*, category:expense_categories(id, name, icon)`)
     .single()
@@ -116,5 +135,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json(data, { status: 201 })
+  if (paidBy === 'partner' && paid_by_partner_id) {
+    const capitalInsert: Record<string, unknown> = {
+      tenant_id:        writeTenantId,
+      type:             'contribution',
+      amount_paisa,
+      transaction_date: expense_date,
+      notes:            `Paid expense: ${trimmedDescription}`,
+      reference:        null,
+      created_by:       user?.id || null,
+    }
+
+    if (paid_by_partner_source === 'partner') {
+      capitalInsert.partner_id         = null
+      capitalInsert.partner_profile_id = paid_by_partner_id
+    } else {
+      capitalInsert.partner_id         = paid_by_partner_id
+      capitalInsert.partner_profile_id = null
+    }
+
+    const { error: capitalError } = await supabase
+      .from('capital_transactions')
+      .insert(capitalInsert)
+
+    if (capitalError) {
+      return NextResponse.json(
+        { error: `Expense saved but capital entry failed: ${capitalError.message}` },
+        { status: 500 },
+      )
+    }
+  }
+
+  const [enriched] = await enrichExpensesWithPartnerNames(supabase, [data])
+  return NextResponse.json(enriched, { status: 201 })
 }

@@ -192,6 +192,7 @@ export default function NewPurchasePage() {
               type="date"
               className="input"
               value={purchaseDate}
+              max={todayString()}
               onChange={e => setPurchaseDate(e.target.value)}
               required
             />

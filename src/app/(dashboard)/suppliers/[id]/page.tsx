@@ -245,6 +245,7 @@ export default function SupplierDetailPage({
                   type="date"
                   className="input"
                   value={payDate}
+                  max={todayString()}
                   onChange={e => setPayDate(e.target.value)}
                 />
               </div>

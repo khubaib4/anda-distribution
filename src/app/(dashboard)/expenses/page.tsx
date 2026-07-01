@@ -1,20 +1,33 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, ChevronDown, X } from 'lucide-react'
+import { Plus, ChevronDown, X, Pencil, Trash2 } from 'lucide-react'
 import { useExpenses, useExpenseCategories } from '@/hooks/use-expenses'
 import ExpenseForm from '@/components/expenses/expense-form'
 import { formatPKR, formatDate } from '@/lib/utils'
 import { SkeletonList } from '@/components/ui/skeleton'
+import type { Expense } from '@/types'
+
+type ExpensePayload = Parameters<
+  ReturnType<typeof useExpenses>['createExpense']
+>[0]
 
 export default function ExpensesPage() {
-  const [showForm,    setShowForm]    = useState(false)
-  const [categoryId,  setCategoryId]  = useState('')
-  const [from,        setFrom]        = useState('')
-  const [to,          setTo]          = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showForm,       setShowForm]       = useState(false)
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+  const [categoryId,     setCategoryId]     = useState('')
+  const [from,           setFrom]           = useState('')
+  const [to,             setTo]             = useState('')
+  const [showFilters,    setShowFilters]    = useState(false)
 
-  const { expenses, loading, error, createExpense } = useExpenses({
+  const {
+    expenses,
+    loading,
+    error,
+    createExpense,
+    updateExpense,
+    deleteExpense,
+  } = useExpenses({
     category_id: categoryId || undefined,
     from:        from       || undefined,
     to:          to         || undefined,
@@ -26,7 +39,6 @@ export default function ExpensesPage() {
     (s, e) => s + e.amount_paisa, 0
   )
 
-  // Group by category for summary
   const byCategory = categories
     .map(cat => ({
       ...cat,
@@ -37,9 +49,35 @@ export default function ExpensesPage() {
     .filter(c => c.total > 0)
     .sort((a, b) => b.total - a.total)
 
-  async function handleSubmit(values: Parameters<typeof createExpense>[0]) {
-    await createExpense(values)
+  const formOpen = showForm || !!editingExpense
+
+  function closeForm() {
     setShowForm(false)
+    setEditingExpense(null)
+  }
+
+  function openNewForm() {
+    setEditingExpense(null)
+    setShowForm(true)
+  }
+
+  function openEditForm(expense: Expense) {
+    setShowForm(false)
+    setEditingExpense(expense)
+  }
+
+  async function handleSubmit(values: ExpensePayload) {
+    if (editingExpense) {
+      await updateExpense(editingExpense.id, values)
+    } else {
+      await createExpense(values)
+    }
+    closeForm()
+  }
+
+  async function handleDelete(expense: Expense) {
+    if (!window.confirm(`Delete "${expense.description}"?`)) return
+    await deleteExpense(expense.id)
   }
 
   const hasFilters = categoryId || from || to
@@ -63,7 +101,7 @@ export default function ExpensesPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm(v => !v)}
+          onClick={() => formOpen ? closeForm() : openNewForm()}
           className="btn-primary"
         >
           <Plus className="w-4 h-4" />
@@ -72,21 +110,25 @@ export default function ExpensesPage() {
         </button>
       </div>
 
-      {/* Inline add form */}
-      {showForm && (
+      {/* Inline add/edit form */}
+      {formOpen && (
         <div className="card p-4 mb-5">
           <div className="flex items-center justify-between mb-4">
-            <p className="section-title mb-0">New expense</p>
+            <p className="section-title mb-0">
+              {editingExpense ? 'Edit expense' : 'New expense'}
+            </p>
             <button
-              onClick={() => setShowForm(false)}
+              onClick={closeForm}
               className="btn-ghost p-1.5 -mr-1.5"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
           <ExpenseForm
+            key={editingExpense?.id ?? 'new'}
+            initial={editingExpense ?? undefined}
             onSubmit={handleSubmit}
-            onCancel={() => setShowForm(false)}
+            onCancel={closeForm}
           />
         </div>
       )}
@@ -242,7 +284,7 @@ export default function ExpensesPage() {
             </p>
             {!hasFilters && (
               <button
-                onClick={() => setShowForm(true)}
+                onClick={openNewForm}
                 className="btn-primary mt-4"
               >
                 <Plus className="w-4 h-4" />
@@ -267,6 +309,7 @@ export default function ExpensesPage() {
                     <th>Description</th>
                     <th>Details</th>
                     <th className="text-right">Amount</th>
+                    <th className="w-20" />
                   </tr>
                 </thead>
                 <tbody>
@@ -285,6 +328,11 @@ export default function ExpensesPage() {
                         {expense.description}
                       </td>
                       <td className="text-xs text-stone-400">
+                        {expense.paid_by === 'partner' && expense.paid_by_partner_name && (
+                          <span className="block text-brand-600">
+                            Paid by {expense.paid_by_partner_name}
+                          </span>
+                        )}
                         {expense.worker_name && (
                           <span>{expense.worker_name}</span>
                         )}
@@ -307,14 +355,31 @@ export default function ExpensesPage() {
                           {formatPKR(expense.amount_paisa)}
                         </span>
                       </td>
+                      <td>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button
+                            onClick={() => openEditForm(expense)}
+                            className="btn-ghost p-1.5"
+                            aria-label="Edit expense"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(expense)}
+                            className="btn-ghost p-1.5 text-danger"
+                            aria-label="Delete expense"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
 
-                {/* Total row */}
                 <tfoot>
                   <tr className="bg-stone-50 border-t-2 border-stone-200">
-                    <td colSpan={4} className="px-4 py-2.5">
+                    <td colSpan={5} className="px-4 py-2.5">
                       <span className="text-xs font-semibold text-stone-600
                                        uppercase tracking-wider">
                         Total
@@ -349,6 +414,11 @@ export default function ExpensesPage() {
                       {expense.category?.name} ·{' '}
                       {formatDate(expense.expense_date)}
                     </p>
+                    {expense.paid_by === 'partner' && expense.paid_by_partner_name && (
+                      <p className="text-xs text-brand-600 mt-0.5 ml-6">
+                        Paid by {expense.paid_by_partner_name}
+                      </p>
+                    )}
                     {(expense.worker_name || expense.vehicle) && (
                       <p className="text-xs text-stone-400 mt-0.5 ml-6">
                         {expense.worker_name || expense.vehicle}
@@ -360,15 +430,31 @@ export default function ExpensesPage() {
                       </p>
                     )}
                   </div>
-                  <p className="amount text-sm font-medium text-stone-900
-                                flex-shrink-0">
-                    {formatPKR(expense.amount_paisa)}
-                  </p>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <p className="amount text-sm font-medium text-stone-900">
+                      {formatPKR(expense.amount_paisa)}
+                    </p>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => openEditForm(expense)}
+                        className="btn-ghost p-1.5"
+                        aria-label="Edit expense"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(expense)}
+                        className="btn-ghost p-1.5 text-danger"
+                        aria-label="Delete expense"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
 
-            {/* Mobile total */}
             <div className="px-4 py-3 bg-stone-50 flex justify-between
                             items-center">
               <span className="text-xs font-semibold text-stone-600

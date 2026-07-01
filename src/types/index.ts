@@ -84,6 +84,11 @@ export interface Expense {
   worker_name: string | null
   labor_type: LaborType | null
   notes: string | null
+  bank_account_id: string | null
+  paid_by: 'business' | 'partner'
+  paid_by_partner_id: string | null
+  paid_by_partner_source: 'profile' | 'partner' | null
+  paid_by_partner_name?: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -156,7 +161,8 @@ export interface CustomerPayment {
 
 export interface CapitalTransaction {
   id: string
-  partner_id: string
+  partner_id: string | null
+  partner_profile_id: string | null
   type: CapitalTransactionType
   amount_paisa: number
   reference: string | null
@@ -166,6 +172,23 @@ export interface CapitalTransaction {
   created_at: string
   updated_at: string
   partner?: Profile
+  simple_partner?: SimplePartner
+}
+
+export interface SimplePartner {
+  id: string
+  tenant_id: string
+  full_name: string
+  phone: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface PartnerOption {
+  id: string
+  full_name: string
+  phone: string | null
+  source: 'profile' | 'partner'
 }
 
 export interface StockMovement {
@@ -205,7 +228,8 @@ export interface CustomerBalance {
 }
 
 export interface PartnerCapitalSummary {
-  partner_id: string
+  id: string
+  source: 'profile' | 'partner'
   full_name: string
   total_contributed_paisa: number
   total_withdrawn_paisa: number

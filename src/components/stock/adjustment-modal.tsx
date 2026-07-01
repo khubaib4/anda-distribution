@@ -298,6 +298,7 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
                 type="date"
                 className="input"
                 value={date}
+                max={todayString()}
                 onChange={e => setDate(e.target.value)}
               />
             </div>

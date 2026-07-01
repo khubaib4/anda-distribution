@@ -281,6 +281,7 @@ export default function CustomerDetailPage({
                   type="date"
                   className="input"
                   value={payDate}
+                  max={todayString()}
                   onChange={e => setPayDate(e.target.value)}
                 />
               </div>

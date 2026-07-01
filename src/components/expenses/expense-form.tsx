@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useExpenseCategories } from '@/hooks/use-expenses'
-import { todayString, toPaisa } from '@/lib/utils'
-import type { BankAccountBalance } from '@/types'
+import { todayString, toPaisa, formatPKR } from '@/lib/utils'
+import type { BankAccountBalance, Expense, PartnerOption } from '@/types'
 
 interface Props {
+  initial?: Expense
   onSubmit: (values: {
     category_id:     string
     amount_paisa:    number
@@ -17,6 +18,9 @@ interface Props {
     labor_type?:     string
     notes?:          string
     bank_account_id?: string
+    paid_by?:        'business' | 'partner'
+    paid_by_partner_id?: string
+    paid_by_partner_source?: 'profile' | 'partner'
   }) => Promise<void>
   onCancel: () => void
 }
@@ -26,21 +30,44 @@ function accountLabel(account: BankAccountBalance): string {
   return `${account.bank_name} — ${account.account_holder}`
 }
 
-export default function ExpenseForm({ onSubmit, onCancel }: Props) {
+export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
+  const isEdit = !!initial
   const { categories } = useExpenseCategories()
 
-  const [categoryId,      setCategoryId]      = useState('')
-  const [amount,          setAmount]          = useState('')
-  const [date,            setDate]            = useState(todayString())
-  const [description,     setDescription]     = useState('')
-  const [paidVia,         setPaidVia]         = useState('cash')
-  const [bankAccountId,   setBankAccountId]   = useState('')
+  const [categoryId,      setCategoryId]      = useState(initial?.category_id ?? '')
+  const [amount,          setAmount]          = useState(
+    initial ? String(initial.amount_paisa / 100) : '',
+  )
+  const [date,            setDate]            = useState(
+    initial?.expense_date ?? todayString(),
+  )
+  const [description,     setDescription]     = useState(initial?.description ?? '')
+  const [paidVia,         setPaidVia]         = useState(
+    initial?.bank_account_id ? 'bank_transfer' : 'cash',
+  )
+  const [bankAccountId,   setBankAccountId]   = useState(
+    initial?.bank_account_id ?? '',
+  )
   const [bankAccounts,    setBankAccounts]    = useState<BankAccountBalance[]>([])
-  const [vehicle,         setVehicle]         = useState('Delivery Van')
-  const [odometer,    setOdometer]    = useState('')
-  const [workerName,  setWorkerName]  = useState('')
-  const [laborType,   setLaborType]   = useState<'daily' | 'monthly'>('daily')
-  const [notes,       setNotes]       = useState('')
+  const [vehicle,         setVehicle]         = useState(initial?.vehicle ?? 'Delivery Van')
+  const [odometer,    setOdometer]    = useState(
+    initial?.odometer_km != null ? String(initial.odometer_km) : '',
+  )
+  const [workerName,  setWorkerName]  = useState(initial?.worker_name ?? '')
+  const [laborType,   setLaborType]   = useState<'daily' | 'monthly'>(
+    initial?.labor_type === 'monthly' ? 'monthly' : 'daily',
+  )
+  const [notes,       setNotes]       = useState(initial?.notes ?? '')
+  const [paidBy,      setPaidBy]      = useState<'business' | 'partner'>(
+    initial?.paid_by === 'partner' ? 'partner' : 'business',
+  )
+  const [paidByPartnerId, setPaidByPartnerId] = useState(
+    initial?.paid_by_partner_id ?? '',
+  )
+  const [paidByPartnerSource, setPaidByPartnerSource] = useState<'profile' | 'partner'>(
+    initial?.paid_by_partner_source === 'partner' ? 'partner' : 'profile',
+  )
+  const [partners,    setPartners]    = useState<PartnerOption[]>([])
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
@@ -58,9 +85,20 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
       .catch(console.error)
   }, [])
 
-  // Auto-set description based on category
+  useEffect(() => {
+    window.fetch('/api/partners')
+      .then(r => r.json())
+      .then((data: PartnerOption[]) => setPartners(data))
+      .catch(console.error)
+  }, [])
+
+  const selectedPaidByPartner = partners.find(
+    p => p.id === paidByPartnerId && p.source === paidByPartnerSource,
+  )
+
   function handleCategoryChange(id: string) {
     setCategoryId(id)
+    if (isEdit) return
     const cat = categories.find(c => c.id === id)
     if (!cat) return
     if (cat.name === 'Fuel')             setDescription('Fuel expense')
@@ -81,6 +119,10 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
 
     const amount_paisa = toPaisa(amount)
     if (amount_paisa <= 0) { setError('Amount must be greater than 0'); return }
+    if (paidBy === 'partner' && !paidByPartnerId) {
+      setError('Please select a partner')
+      return
+    }
 
     setSaving(true)
     try {
@@ -94,6 +136,13 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
         worker_name:  isLabor ? workerName           : undefined,
         labor_type:   isLabor ? laborType            : undefined,
         notes:        notes || undefined,
+        paid_by:      paidBy,
+        ...(paidBy === 'partner'
+          ? {
+              paid_by_partner_id:     paidByPartnerId,
+              paid_by_partner_source: paidByPartnerSource,
+            }
+          : {}),
         ...(paidVia === 'bank_transfer' && bankAccountId
           ? { bank_account_id: bankAccountId }
           : {}),
@@ -163,6 +212,7 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
             type="date"
             className="input"
             value={date}
+            max={todayString()}
             onChange={e => setDate(e.target.value)}
           />
         </div>
@@ -287,6 +337,72 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
         </div>
       )}
 
+      {/* Paid by */}
+      <div className="form-group">
+        <label className="label">Paid by</label>
+        <select
+          className="select"
+          value={paidBy}
+          onChange={e => {
+            const value = e.target.value as 'business' | 'partner'
+            setPaidBy(value)
+            if (value === 'business') {
+              setPaidByPartnerId('')
+              setPaidByPartnerSource('profile')
+            }
+          }}
+        >
+          <option value="business">Business</option>
+          <option value="partner">Partner</option>
+        </select>
+      </div>
+
+      {paidBy === 'partner' && (
+        <div className="space-y-3">
+          <div className="form-group">
+            <label className="label">
+              Partner <span className="text-danger">*</span>
+            </label>
+            <select
+              className="select"
+              value={
+                paidByPartnerId
+                  ? `${paidByPartnerSource}:${paidByPartnerId}`
+                  : ''
+              }
+              onChange={e => {
+                const value = e.target.value
+                if (!value) {
+                  setPaidByPartnerId('')
+                  setPaidByPartnerSource('profile')
+                  return
+                }
+                const [source, id] = value.split(':')
+                setPaidByPartnerId(id)
+                setPaidByPartnerSource(
+                  source === 'partner' ? 'partner' : 'profile',
+                )
+              }}
+            >
+              <option value="">Select partner…</option>
+              {partners.map(p => (
+                <option key={`${p.source}:${p.id}`} value={`${p.source}:${p.id}`}>
+                  {p.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {!isEdit && selectedPaidByPartner && amount && (
+            <p className="text-xs text-brand-700 bg-brand-50 border
+                          border-brand-200 rounded px-3 py-2">
+              This will add {formatPKR(toPaisa(amount))} to{' '}
+              {selectedPaidByPartner.full_name}&apos;s capital as a contribution
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Notes */}
       <div className="form-group">
         <label className="label">Notes</label>
@@ -314,7 +430,7 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
           className="btn-primary flex-1"
           disabled={saving}
         >
-          {saving ? 'Saving…' : 'Save expense'}
+          {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save expense'}
         </button>
       </div>
     </form>
