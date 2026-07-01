@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi } from '@/lib/tenant-api'
+import { enrichWithPartnerNames } from '@/lib/expense-partners'
 
 export async function GET(
   request: Request,
@@ -46,7 +47,8 @@ export async function GET(
     ),
   }
 
-  return NextResponse.json(enriched)
+  const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])
+  return NextResponse.json(withPartnerName)
 }
 
 export async function PATCH(

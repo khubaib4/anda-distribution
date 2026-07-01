@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { enrichWithPartnerNames } from '@/lib/expense-partners'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -51,7 +52,8 @@ export async function GET(request: Request) {
     ),
   }))
 
-  return NextResponse.json(enriched)
+  const withPartnerNames = await enrichWithPartnerNames(supabase, enriched)
+  return NextResponse.json(withPartnerNames)
 }
 
 export async function POST(request: Request) {
@@ -78,6 +80,9 @@ export async function POST(request: Request) {
     payment_status,
     amount_paid_paisa,
     items,
+    paid_by,
+    paid_by_partner_id,
+    paid_by_partner_source,
   } = body
 
   if (!purchase_date) {
@@ -101,6 +106,15 @@ export async function POST(request: Request) {
     }
   }
 
+  const paidBy = paid_by === 'partner' ? 'partner' : 'business'
+
+  if (paidBy === 'partner' && !paid_by_partner_id) {
+    return NextResponse.json(
+      { error: 'Partner is required when paid by partner' },
+      { status: 400 },
+    )
+  }
+
   let countQuery = supabase
     .from('purchases')
     .select('*', { count: 'exact', head: true })
@@ -117,6 +131,12 @@ export async function POST(request: Request) {
 
   const invoice_number = `PUR-${String((count ?? 0) + 1).padStart(4, '0')}`
 
+  const totalPaisa = items.reduce(
+    (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
+      sum + item.quantity_trays * item.price_per_tray_paisa,
+    0,
+  )
+
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
     .insert({
@@ -128,6 +148,9 @@ export async function POST(request: Request) {
       notes:                  notes          || null,
       payment_status:         payment_status || 'unpaid',
       amount_paid_paisa:      amount_paid_paisa || 0,
+      paid_by:                paidBy,
+      paid_by_partner_id:     paidBy === 'partner' ? paid_by_partner_id : null,
+      paid_by_partner_source: paidBy === 'partner' ? paid_by_partner_source : null,
       created_by:             user?.id       || null,
     })
     .select()
@@ -188,6 +211,37 @@ export async function POST(request: Request) {
       { error: movementsError.message },
       { status: 500 }
     )
+  }
+
+  if (paidBy === 'partner' && paid_by_partner_id) {
+    const capitalInsert: Record<string, unknown> = {
+      tenant_id:        writeTenantId,
+      type:             'contribution',
+      amount_paisa:     totalPaisa,
+      transaction_date: purchase_date,
+      notes:            `Paid purchase: ${invoice_number}`,
+      reference:        null,
+      created_by:       user?.id || null,
+    }
+
+    if (paid_by_partner_source === 'partner') {
+      capitalInsert.partner_id         = null
+      capitalInsert.partner_profile_id = paid_by_partner_id
+    } else {
+      capitalInsert.partner_id         = paid_by_partner_id
+      capitalInsert.partner_profile_id = null
+    }
+
+    const { error: capitalError } = await supabase
+      .from('capital_transactions')
+      .insert(capitalInsert)
+
+    if (capitalError) {
+      return NextResponse.json(
+        { error: `Purchase saved but capital entry failed: ${capitalError.message}` },
+        { status: 500 },
+      )
+    }
   }
 
   return NextResponse.json(purchase, { status: 201 })

@@ -218,9 +218,16 @@ export default function PurchaseDetailModal({
                 </div>
 
                 {!editingPayment ? (
-                  <span className={paymentStatusClass(purchase.payment_status)}>
-                    {paymentStatusLabel(purchase.payment_status)}
-                  </span>
+                  <div className="space-y-2">
+                    <span className={paymentStatusClass(purchase.payment_status)}>
+                      {paymentStatusLabel(purchase.payment_status)}
+                    </span>
+                    {purchase.paid_by === 'partner' && purchase.paid_by_partner_name && (
+                      <p className="text-sm text-brand-600">
+                        Paid by {purchase.paid_by_partner_name}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="form-group">

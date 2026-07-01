@@ -47,3 +47,5 @@ export async function enrichExpensesWithPartnerNames<T extends ExpenseRow>(
     return { ...expense, paid_by_partner_name: name ?? null }
   })
 }
+
+export const enrichWithPartnerNames = enrichExpensesWithPartnerNames

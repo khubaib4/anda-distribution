@@ -47,6 +47,10 @@ export interface Purchase {
   notes: string | null
   payment_status: PaymentStatus
   amount_paid_paisa: number
+  paid_by?: string
+  paid_by_partner_id?: string | null
+  paid_by_partner_source?: string | null
+  paid_by_partner_name?: string | null
   created_by: string | null
   created_at: string
   updated_at: string
