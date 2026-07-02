@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Phone,
   Plus,
+  Download,
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
@@ -15,6 +16,10 @@ import {
   customerTypeLabel,
   todayString,
 } from '@/lib/utils'
+import {
+  generateCustomerLedgerPDF,
+  type LedgerData,
+} from '@/lib/customer-ledger-pdf'
 import type { CustomerBalance, BankAccountBalance } from '@/types'
 import { SkeletonList } from '@/components/ui/skeleton'
 
@@ -33,15 +38,6 @@ interface LedgerEntry {
   running_balance: number
   invoice_number?: string
   payment_method?: string
-}
-
-interface LedgerData {
-  ledger:  LedgerEntry[]
-  summary: {
-    total_debit_paisa:  number
-    total_credit_paisa: number
-    closing_balance:    number
-  }
 }
 
 export default function CustomerDetailPage({
@@ -203,13 +199,27 @@ export default function CustomerDetailPage({
               </div>
             </div>
 
-            <button
-              onClick={() => setShowPayForm(v => !v)}
-              className="btn-primary flex-shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              Payment
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {ledgerData && customer && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    generateCustomerLedgerPDF(customer, ledgerData)
+                  }
+                  className="btn-secondary"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Download Statement</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowPayForm(v => !v)}
+                className="btn-primary"
+              >
+                <Plus className="w-4 h-4" />
+                Payment
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -527,11 +537,10 @@ export default function CustomerDetailPage({
                         }
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-stone-900
-                                      truncate">
+                        <p className="text-sm font-medium text-stone-900 break-words">
                           {entry.description}
                         </p>
-                        <p className="text-xs text-stone-400">
+                        <p className="text-xs text-stone-400 mt-0.5">
                           {formatDate(entry.entry_date)}
                           {entry.payment_method && (
                             <span className="ml-1 capitalize">

@@ -233,9 +233,11 @@ export function effectiveItemPricePaisa(item: {
   price_per_tray_paisa: number
   discounted_price_paisa?: number
 }): number {
-  return (item.discounted_price_paisa ?? 0) > 0
-    ? item.discounted_price_paisa!
-    : item.price_per_tray_paisa
+  const discounted = item.discounted_price_paisa ?? 0
+  if (discounted > 0 && discounted !== item.price_per_tray_paisa) {
+    return discounted
+  }
+  return item.price_per_tray_paisa
 }
 
 export function effectiveItemLineTotalPaisa(item: {
@@ -247,10 +249,7 @@ export function effectiveItemLineTotalPaisa(item: {
 }): number {
   const trays = item.quantity_trays
     ?? (item.quantity_peti ?? 0) * 12 + (item.quantity_tray ?? 0)
-  if ((item.discounted_price_paisa ?? 0) > 0) {
-    return item.discounted_price_paisa! * trays
-  }
-  return trays * item.price_per_tray_paisa
+  return trays * effectiveItemPricePaisa(item)
 }
 
 export function computeSaleSubtotalPaisa(
@@ -265,6 +264,22 @@ export function computeSaleSubtotalPaisa(
     0,
   )
 }
+
+/** Discounted sale total — item discounts plus overall sale discount. */
+export function computeSaleTotalPaisa(sale: {
+  discount_amount_paisa?: number
+  items?: Array<{
+    quantity_trays: number
+    price_per_tray_paisa: number
+    discounted_price_paisa?: number
+  }>
+}): number {
+  return computeSaleSubtotalPaisa(sale.items ?? [])
+    - (sale.discount_amount_paisa ?? 0)
+}
+
+/** Customer balance sale total — same as computeSaleTotalPaisa. */
+export const computeCustomerSaleDebitPaisa = computeSaleTotalPaisa
 
 export function computeDiscountAmountPaisa(
   subtotalPaisa: number,

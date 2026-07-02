@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import {
   computeSaleSubtotalPaisa,
+  computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
-  effectiveItemPricePaisa,
+  effectiveItemLineTotalPaisa,
 } from '@/lib/utils'
 
 export async function GET(request: Request) {
@@ -55,8 +56,7 @@ export async function GET(request: Request) {
 
   const enriched = (data ?? []).map(s => {
     const subtotal = computeSaleSubtotalPaisa(s.items ?? [])
-    const discount = s.discount_amount_paisa ?? 0
-    const total_paisa = subtotal - discount
+    const total_paisa = computeSaleTotalPaisa(s)
     const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
       payment_status:    s.payment_status,
       amount_paid_paisa: s.amount_paid_paisa,
@@ -261,7 +261,7 @@ export async function POST(request: Request) {
       quantity_trays:         number
       price_per_tray_paisa:   number
       discounted_price_paisa?: number
-    }) => sum + item.quantity_trays * effectiveItemPricePaisa(item),
+    }) => sum + effectiveItemLineTotalPaisa(item),
     0,
   )
   const totalPaisa = subtotalPaisa - (discount_amount_paisa ?? 0)

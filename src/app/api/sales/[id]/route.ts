@@ -5,8 +5,8 @@ import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   computeSaleSubtotalPaisa,
+  computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
-  effectiveItemPricePaisa,
 } from '@/lib/utils'
 
 const SALE_SELECT = `
@@ -37,8 +37,7 @@ function enrichSale<T extends {
   discount_amount_paisa?: number
 }>(data: T) {
   const subtotal = computeSaleSubtotalPaisa(data.items ?? [])
-  const discount = data.discount_amount_paisa ?? 0
-  const total_paisa = subtotal - discount
+  const total_paisa = computeSaleTotalPaisa(data)
   const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
     payment_status:    data.payment_status,
     amount_paid_paisa: data.amount_paid_paisa,
@@ -54,11 +53,7 @@ function enrichSale<T extends {
       (sum, item) => sum + item.quantity_trays * item.cost_per_tray_paisa,
       0,
     ),
-    revenue_paisa: (data.items ?? []).reduce(
-      (sum, item) =>
-        sum + item.quantity_trays * effectiveItemPricePaisa(item),
-      0,
-    ),
+    revenue_paisa: computeSaleTotalPaisa(data),
   }
 }
 

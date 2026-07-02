@@ -1,19 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
-import { computeSaleSubtotalPaisa } from '@/lib/utils'
-
-function saleTotalPaisa(sale: {
-  discount_amount_paisa?: number
-  items?: Array<{
-    quantity_trays: number
-    price_per_tray_paisa: number
-    discounted_price_paisa?: number
-  }>
-}): number {
-  const subtotal = computeSaleSubtotalPaisa(sale.items ?? [])
-  return subtotal - (sale.discount_amount_paisa ?? 0)
-}
+import { computeCustomerSaleDebitPaisa } from '@/lib/utils'
 
 export async function GET(
   request: Request,
@@ -70,7 +58,7 @@ export async function GET(
   }
 
   const total_sales_paisa = (salesData ?? []).reduce(
-    (sum, sale) => sum + saleTotalPaisa(sale),
+    (sum, sale) => sum + computeCustomerSaleDebitPaisa(sale),
     0,
   )
   const total_paid_paisa = (paymentsData ?? []).reduce(

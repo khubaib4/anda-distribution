@@ -40,7 +40,7 @@ export default function SalesPage() {
   )
   const totalUnpaid = sales
     .filter(s => s.payment_status !== 'paid')
-    .reduce((s, sale) => s + (sale.remaining_paisa ?? sale.total_paisa ?? 0), 0)
+    .reduce((s, sale) => s + (sale.remaining_paisa ?? 0), 0)
 
   const hasFilters = status || customerId || from || to
 

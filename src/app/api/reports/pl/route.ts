@@ -1,6 +1,23 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
+import { effectiveItemLineTotalPaisa } from '@/lib/utils'
+
+type SaleItemRow = {
+  quantity_trays: number
+  price_per_tray_paisa: number
+  discounted_price_paisa?: number
+  cost_per_tray_paisa: number
+  egg_category: { name: string } | { name: string }[] | null
+}
+
+function categoryName(
+  eggCategory: SaleItemRow['egg_category'],
+): string {
+  return (Array.isArray(eggCategory)
+    ? eggCategory[0]?.name
+    : eggCategory?.name) ?? 'Unknown'
+}
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -23,9 +40,11 @@ export async function GET(request: Request) {
       .select(`
         id,
         sale_date,
+        discount_amount_paisa,
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discounted_price_paisa,
           cost_per_tray_paisa,
           egg_category:egg_categories(name)
         )
@@ -47,16 +66,13 @@ export async function GET(request: Request) {
   let totalCOGS    = 0
 
   for (const sale of salesData ?? []) {
-    for (const item of (sale.items ?? []) as unknown as Array<{
-      quantity_trays: number
-      price_per_tray_paisa: number
-      cost_per_tray_paisa: number
-      egg_category: { name: string } | { name: string }[] | null
-    }>) {
-      const revenue = item.quantity_trays * item.price_per_tray_paisa
+    const saleCategoryRevenue: Record<string, number> = {}
+    let saleRevenue = 0
+
+    for (const item of (sale.items ?? []) as unknown as SaleItemRow[]) {
+      const revenue = effectiveItemLineTotalPaisa(item)
       const cogs    = item.quantity_trays * item.cost_per_tray_paisa
-      const ec      = item.egg_category
-      const catName = (Array.isArray(ec) ? ec[0]?.name : ec?.name) ?? 'Unknown'
+      const catName = categoryName(item.egg_category)
 
       if (!categoryMap[catName]) {
         categoryMap[catName] = {
@@ -67,13 +83,37 @@ export async function GET(request: Request) {
         }
       }
 
-      categoryMap[catName].revenue_paisa  += revenue
       categoryMap[catName].cogs_paisa     += cogs
       categoryMap[catName].quantity_trays += item.quantity_trays
 
-      totalRevenue += revenue
-      totalCOGS    += cogs
+      saleCategoryRevenue[catName] = (saleCategoryRevenue[catName] ?? 0) + revenue
+      saleRevenue += revenue
+      totalCOGS   += cogs
     }
+
+    const overallDiscount = sale.discount_amount_paisa ?? 0
+    saleRevenue -= overallDiscount
+
+    if (overallDiscount > 0 && saleRevenue + overallDiscount > 0) {
+      const preDiscountSaleRevenue = saleRevenue + overallDiscount
+      let allocated = 0
+      const categories = Object.entries(saleCategoryRevenue)
+
+      categories.forEach(([catName, catRev], index) => {
+        const isLast = index === categories.length - 1
+        const share = isLast
+          ? overallDiscount - allocated
+          : Math.round(overallDiscount * (catRev / preDiscountSaleRevenue))
+        allocated += share
+        categoryMap[catName].revenue_paisa += catRev - share
+      })
+    } else {
+      for (const [catName, catRev] of Object.entries(saleCategoryRevenue)) {
+        categoryMap[catName].revenue_paisa += catRev
+      }
+    }
+
+    totalRevenue += saleRevenue
   }
 
   const grossProfit = totalRevenue - totalCOGS

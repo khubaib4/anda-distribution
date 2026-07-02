@@ -10,6 +10,8 @@ import {
   formatQty,
   paymentStatusClass,
   paymentStatusLabel,
+  computeSaleSubtotalPaisa,
+  computeSaleTotalPaisa,
   effectiveItemPricePaisa,
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
@@ -99,12 +101,11 @@ export default function SaleDetailModal({
     setSaving(false)
   }
 
-  const subtotalPaisa = sale?.subtotal_paisa ?? (sale?.items ?? []).reduce(
-    (sum, item) => sum + item.quantity_trays * item.price_per_tray_paisa,
-    0,
-  )
+  const subtotalPaisa = sale?.subtotal_paisa
+    ?? computeSaleSubtotalPaisa(sale?.items ?? [])
   const discountPaisa = sale?.discount_amount_paisa ?? 0
-  const totalPaisa = sale?.total_paisa ?? subtotalPaisa - discountPaisa
+  const totalPaisa = sale?.total_paisa
+    ?? computeSaleTotalPaisa(sale ?? { items: [] })
   const paidPaisa = sale?.paid_paisa ?? (
     sale?.payment_status === 'paid'
       ? totalPaisa

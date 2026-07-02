@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
+import { computeCustomerSaleDebitPaisa } from '@/lib/utils'
 
 export async function GET(
   request: Request,
@@ -22,9 +23,12 @@ export async function GET(
         sale_date,
         invoice_number,
         payment_status,
+        discount_amount_paisa,
         items:sale_items(
           quantity_trays,
-          price_per_tray_paisa
+          price_per_tray_paisa,
+          discounted_price_paisa,
+          egg_category:egg_categories(name)
         )
       `)
       .eq('customer_id', id)
@@ -56,6 +60,33 @@ export async function GET(
   }
 
   // Build ledger entries
+  function buildSaleDescription(sale: {
+    invoice_number: string | null
+    items?: Array<{
+      quantity_trays: number
+      egg_category?: { name: string } | { name: string }[] | null
+    }>
+  }): string {
+    const itemsDesc = (sale.items ?? []).map(item => {
+      const peti = Math.floor(item.quantity_trays / 12)
+      const trays = item.quantity_trays % 12
+      const qtyStr =
+        peti > 0 && trays > 0 ? `${peti}P ${trays}T`
+        : peti > 0 ? `${peti} peti`
+        : `${trays} tray`
+      const category = item.egg_category
+      const categoryName = Array.isArray(category)
+        ? category[0]?.name
+        : category?.name
+      return `${categoryName ?? '—'} ${qtyStr}`
+    }).join(', ')
+
+    const invoice = sale.invoice_number ?? '—'
+    return itemsDesc
+      ? `Sale — ${invoice} · ${itemsDesc}`
+      : `Sale — ${invoice}`
+  }
+
   type LedgerEntry = {
     id:             string
     entry_type:     'sale' | 'payment'
@@ -72,18 +103,12 @@ export async function GET(
 
   // Add sales as debits
   for (const sale of salesData ?? []) {
-    const total = (sale.items ?? []).reduce(
-      (sum: number, item: {
-        quantity_trays: number
-        price_per_tray_paisa: number
-      }) => sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    )
+    const total = computeCustomerSaleDebitPaisa(sale)
     entries.push({
       id:             sale.id,
       entry_type:     'sale',
       entry_date:     sale.sale_date,
-      description:    `Sale — ${sale.invoice_number}`,
+      description:    buildSaleDescription(sale),
       debit_paisa:    total,
       credit_paisa:   0,
       invoice_number: sale.invoice_number ?? undefined,

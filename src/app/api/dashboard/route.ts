@@ -1,25 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
-import { computeSaleSubtotalPaisa } from '@/lib/utils'
+import { computeSaleSubtotalPaisa, computeSaleTotalPaisa } from '@/lib/utils'
 
-const IN_TYPES  = new Set(['purchase_in', 'adjustment_in', 'opening_stock'])
-const OUT_TYPES = new Set(['sale_out', 'adjustment_out'])
+const IN_TYPES = ['purchase_in', 'adjustment_in', 'opening_stock'] as const
 
-function movementEggs(quantity_eggs: number | null, quantity_trays: number | null): number {
-  return quantity_eggs ?? (quantity_trays ?? 0) * 30
-}
-
-function saleTotalPaisa(sale: {
-  discount_amount_paisa?: number
-  items?: Array<{
-    quantity_trays: number
-    price_per_tray_paisa: number
-    discounted_price_paisa?: number
-  }>
-}): number {
-  const subtotal = computeSaleSubtotalPaisa(sale.items ?? [])
-  return subtotal - (sale.discount_amount_paisa ?? 0)
+function movementEggs(
+  quantity_eggs: number | null,
+  quantity_trays: number | null,
+): number {
+  if ((quantity_eggs ?? 0) > 0) return quantity_eggs!
+  return (quantity_trays ?? 0) * 30
 }
 
 export async function GET(request: Request) {
@@ -38,18 +29,21 @@ export async function GET(request: Request) {
       .select(`
         id,
         payment_status,
-        items:sale_items(quantity_trays, price_per_tray_paisa)
+        discount_amount_paisa,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discounted_price_paisa
+        )
       `)
       .eq('sale_date', today),
     tenantId,
   )
 
-  const todaySalesTotal = (todaySales ?? []).reduce((sum, sale) => {
-    return sum + (sale.items ?? []).reduce(
-      (s: number, i: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        s + i.quantity_trays * i.price_per_tray_paisa, 0
-    )
-  }, 0)
+  const todaySalesTotal = (todaySales ?? []).reduce(
+    (sum, sale) => sum + computeSaleTotalPaisa(sale),
+    0,
+  )
 
   const todaySalesCount = (todaySales ?? []).length
 
@@ -97,7 +91,7 @@ export async function GET(request: Request) {
 
   const salesByCustomer: Record<string, number> = {}
   for (const sale of salesForBalances ?? []) {
-    const total = saleTotalPaisa(sale)
+    const total = computeSaleTotalPaisa(sale)
     salesByCustomer[sale.customer_id] =
       (salesByCustomer[sale.customer_id] ?? 0) + total
   }
@@ -137,20 +131,23 @@ export async function GET(request: Request) {
     tenantId,
   )
 
-  const stockByCategory = new Map<string, number>()
-  for (const m of movements ?? []) {
-    const eggs = movementEggs(m.quantity_eggs, m.quantity_trays)
-    const current = stockByCategory.get(m.egg_category_id) ?? 0
+  const stockMap: Record<string, number> = {}
 
-    if (IN_TYPES.has(m.movement_type)) {
-      stockByCategory.set(m.egg_category_id, current + eggs)
-    } else if (OUT_TYPES.has(m.movement_type)) {
-      stockByCategory.set(m.egg_category_id, current - eggs)
+  for (const movement of movements ?? []) {
+    const eggs = movementEggs(movement.quantity_eggs, movement.quantity_trays)
+    const isIn = IN_TYPES.includes(
+      movement.movement_type as (typeof IN_TYPES)[number],
+    )
+
+    if (!stockMap[movement.egg_category_id]) {
+      stockMap[movement.egg_category_id] = 0
     }
+
+    stockMap[movement.egg_category_id] += isIn ? eggs : -eggs
   }
 
   const stock = (categories ?? []).map(cat => {
-    const quantity_eggs  = stockByCategory.get(cat.id) ?? 0
+    const quantity_eggs  = stockMap[cat.id] ?? 0
     const quantity_trays = quantity_eggs / 30
 
     return {
@@ -162,26 +159,41 @@ export async function GET(request: Request) {
     }
   })
 
-  const totalStockTrays = stock.reduce(
-    (sum, s) => sum + s.quantity_trays, 0
-  )
+  const totalEggs = stock.reduce((sum, s) => sum + s.quantity_eggs, 0)
+  const totalStockTrays = totalEggs / 30
 
-  // 5. This month's sales
+  // 5. This month's sales and COGS
   const { data: monthSales } = await tenantEq(
     supabase
       .from('sales')
-      .select(`items:sale_items(quantity_trays, price_per_tray_paisa)`)
+      .select(`
+        discount_amount_paisa,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discounted_price_paisa,
+          cost_per_tray_paisa
+        )
+      `)
       .gte('sale_date', monthStart)
       .lte('sale_date', today),
     tenantId,
   )
 
-  const monthSalesTotal = (monthSales ?? []).reduce((sum, sale) => {
-    return sum + (sale.items ?? []).reduce(
-      (s: number, i: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        s + i.quantity_trays * i.price_per_tray_paisa, 0
-    )
-  }, 0)
+  let monthSalesTotal = 0
+  let monthCOGS       = 0
+
+  for (const sale of monthSales ?? []) {
+    monthSalesTotal += computeSaleTotalPaisa(sale)
+    for (const item of (sale.items ?? []) as Array<{
+      quantity_trays: number
+      cost_per_tray_paisa: number
+    }>) {
+      monthCOGS += item.quantity_trays * item.cost_per_tray_paisa
+    }
+  }
+
+  const monthGrossProfit = monthSalesTotal - monthCOGS
 
   // 6. This month's expenses
   const { data: monthExpenses } = await tenantEq(
@@ -197,24 +209,7 @@ export async function GET(request: Request) {
     (sum, e) => sum + e.amount_paisa, 0
   )
 
-  // 7. This month's purchases total
-  const { data: monthPurchases } = await tenantEq(
-    supabase
-      .from('purchases')
-      .select(`items:purchase_items(quantity_trays, price_per_tray_paisa)`)
-      .gte('purchase_date', monthStart)
-      .lte('purchase_date', today),
-    tenantId,
-  )
-
-  const monthPurchasesTotal = (monthPurchases ?? []).reduce((sum, p) => {
-    return sum + (p.items ?? []).reduce(
-      (s: number, i: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        s + i.quantity_trays * i.price_per_tray_paisa, 0
-    )
-  }, 0)
-
-  // 8. Recent sales (last 5)
+  // 7. Recent sales (last 5)
   const { data: recentSales } = await tenantEq(
     supabase
       .from('sales')
@@ -223,8 +218,13 @@ export async function GET(request: Request) {
         sale_date,
         invoice_number,
         payment_status,
+        discount_amount_paisa,
         customer:customers(contact_name, business_name),
-        items:sale_items(quantity_trays, price_per_tray_paisa)
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discounted_price_paisa
+        )
       `)
       .order('sale_date',  { ascending: false })
       .order('created_at', { ascending: false })
@@ -234,10 +234,7 @@ export async function GET(request: Request) {
 
   const recentSalesEnriched = (recentSales ?? []).map(s => ({
     ...s,
-    total_paisa: (s.items ?? []).reduce(
-      (sum: number, i: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        sum + i.quantity_trays * i.price_per_tray_paisa, 0
-    ),
+    total_paisa: computeSaleTotalPaisa(s),
   }))
 
   const { data: overdueSales, error: overdueError } = await tenantEq(
@@ -264,11 +261,11 @@ export async function GET(request: Request) {
       date:           today,
     },
     month: {
-      sales_total:     monthSalesTotal,
-      expenses_total:  monthExpensesTotal,
-      purchases_total: monthPurchasesTotal,
-      gross_profit:    monthSalesTotal - monthPurchasesTotal,
-      net_profit:      monthSalesTotal - monthPurchasesTotal - monthExpensesTotal,
+      sales_total:    monthSalesTotal,
+      cogs_total:     monthCOGS,
+      gross_profit:   monthGrossProfit,
+      expenses_total: monthExpensesTotal,
+      net_profit:     monthGrossProfit - monthExpensesTotal,
     },
     receivables: {
       total_paisa:           totalReceivables,
@@ -277,6 +274,7 @@ export async function GET(request: Request) {
     stock: {
       items:       stock,
       total_trays: totalStockTrays,
+      total_eggs:  totalEggs,
     },
     recent_sales: recentSalesEnriched,
     alerts: {

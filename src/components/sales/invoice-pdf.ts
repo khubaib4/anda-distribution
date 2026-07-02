@@ -4,14 +4,56 @@ import {
   formatQty,
   formatDate,
   paymentStatusLabel,
-  effectiveItemPricePaisa,
+  effectiveItemLineTotalPaisa,
   computeSaleSubtotalPaisa,
   computeSalePaymentBreakdown,
 } from '@/lib/utils'
-import type { Sale } from '@/types'
+import type { Sale, SaleItem } from '@/types'
 
 function pdfPKR(paisa: number): string {
   return formatPKR(paisa).replace('₨', 'Rs.').replace(/\u00A0/g, ' ')
+}
+
+function pdfPetiPrice(pricePerTrayPaisa: number): string {
+  return pdfPKR(pricePerTrayPaisa * 12)
+}
+
+function preDiscountSubtotalPaisa(items: SaleItem[]): number {
+  return items.reduce(
+    (sum, item) => sum + item.quantity_trays * item.price_per_tray_paisa,
+    0,
+  )
+}
+
+function itemDiscountsPaisa(items: SaleItem[]): number {
+  return items.reduce((sum, item) => {
+    const discounted = item.discounted_price_paisa ?? 0
+    if (discounted > 0 && discounted !== item.price_per_tray_paisa) {
+      return sum +
+        (item.price_per_tray_paisa - discounted) * item.quantity_trays
+    }
+    return sum
+  }, 0)
+}
+
+function itemHasDiscount(item: SaleItem): boolean {
+  const discounted = item.discounted_price_paisa ?? 0
+  return discounted > 0 && discounted !== item.price_per_tray_paisa
+}
+
+function itemDiscountNote(item: SaleItem): string | null {
+  if (!itemHasDiscount(item)) return null
+
+  if (item.discount_type === 'percentage') {
+    return `Discount: ${item.discount_value}%`
+  }
+
+  const perPetiRupees =
+    ((item.price_per_tray_paisa - item.discounted_price_paisa) * 12) / 100
+  return `Discount: Rs. ${perPetiRupees.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })} per peti`
 }
 
 export function generateInvoicePDF(sale: Sale): void {
@@ -35,7 +77,7 @@ export function generateInvoicePDF(sale: Sale): void {
     `Date: ${formatDate(sale.sale_date)}`,
     pageWidth - margin,
     y + 8,
-    { align: 'right' }
+    { align: 'right' },
   )
 
   y += 22
@@ -69,8 +111,8 @@ export function generateInvoicePDF(sale: Sale): void {
   y += 8
 
   const colCategory = margin
-  const colQty      = 88
-  const colPrice    = 130
+  const colQty      = 95
+  const colPrice    = 138
   const colTotal    = pageWidth - margin
 
   doc.setFillColor(245, 245, 244)
@@ -78,10 +120,10 @@ export function generateInvoicePDF(sale: Sale): void {
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
-  doc.text('Egg Category', colCategory, y)
-  doc.text('Qty',           colQty,      y)
-  doc.text('Price/tray',    colPrice,    y)
-  doc.text('Total',         colTotal,    y, { align: 'right' })
+  doc.text('Category',   colCategory, y)
+  doc.text('Qty',        colQty,      y)
+  doc.text('Price/peti', colPrice,    y)
+  doc.text('Total',      colTotal,    y, { align: 'right' })
 
   y += 10
   doc.setFont('helvetica', 'normal')
@@ -89,28 +131,30 @@ export function generateInvoicePDF(sale: Sale): void {
   const items = sale.items ?? []
 
   for (const item of items) {
-    if (y > 250) {
+    if (y > 245) {
       doc.addPage()
       y = 20
     }
 
-    const effectivePrice = effectiveItemPricePaisa(item)
-    const lineTotal = item.quantity_trays * effectivePrice
-    const hasDiscount = (item.discounted_price_paisa ?? 0) > 0
+    const lineTotal = effectiveItemLineTotalPaisa(item)
+    const discountNote = itemDiscountNote(item)
 
     doc.text(item.egg_category?.name ?? '—', colCategory, y)
     doc.text(formatQty(item.quantity_trays), colQty, y)
-    if (hasDiscount) {
-      doc.setTextColor(120, 120, 120)
-      doc.text(pdfPKR(item.price_per_tray_paisa), colPrice, y)
-      doc.setTextColor(0, 0, 0)
-      doc.text(pdfPKR(effectivePrice), colPrice, y + 4)
-      y += 4
-    } else {
-      doc.text(pdfPKR(effectivePrice), colPrice, y)
-    }
+    doc.text(pdfPetiPrice(item.price_per_tray_paisa), colPrice, y)
     doc.text(pdfPKR(lineTotal), colTotal, y, { align: 'right' })
-    y += 8
+    y += 6
+
+    if (discountNote) {
+      doc.setFontSize(8)
+      doc.setTextColor(120, 120, 120)
+      doc.text(discountNote, colCategory, y)
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(9)
+      y += 5
+    }
+
+    y += 2
   }
 
   y += 2
@@ -118,27 +162,35 @@ export function generateInvoicePDF(sale: Sale): void {
   doc.line(margin, y, pageWidth - margin, y)
   y += 10
 
-  const subtotal = sale.subtotal_paisa ?? computeSaleSubtotalPaisa(items)
-  const discount = sale.discount_amount_paisa ?? 0
-  const total = sale.total_paisa ?? subtotal - discount
+  const preDiscountSubtotal = preDiscountSubtotalPaisa(items)
+  const itemDiscounts       = itemDiscountsPaisa(items)
+  const overallDiscount     = sale.discount_amount_paisa ?? 0
+  const totalDiscount       = itemDiscounts + overallDiscount
+  const afterItemDiscounts  = computeSaleSubtotalPaisa(items)
+  const total               = sale.total_paisa ?? afterItemDiscounts - overallDiscount
   const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
     payment_status:    sale.payment_status,
     amount_paid_paisa: sale.amount_paid_paisa,
     total_paisa:       total,
   })
 
+  const hasAnyDiscount =
+    totalDiscount > 0 ||
+    overallDiscount > 0 ||
+    items.some(itemHasDiscount)
+
   const labelX = pageWidth - margin - 55
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.text('Subtotal', labelX, y)
-  doc.text(pdfPKR(subtotal), colTotal, y, { align: 'right' })
+  doc.text(pdfPKR(preDiscountSubtotal), colTotal, y, { align: 'right' })
   y += 8
 
-  if (discount > 0) {
+  if (hasAnyDiscount && totalDiscount > 0) {
     doc.setTextColor(22, 163, 74)
     doc.text('Discount', labelX, y)
-    doc.text(`- ${pdfPKR(discount)}`, colTotal, y, { align: 'right' })
+    doc.text(`- ${pdfPKR(totalDiscount)}`, colTotal, y, { align: 'right' })
     doc.setTextColor(0, 0, 0)
     y += 8
   }

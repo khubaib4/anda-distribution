@@ -8,6 +8,7 @@ import {
   Receipt,
   TrendingUp,
   ArrowRight,
+  X,
 } from 'lucide-react'
 import {
   formatPKR,
@@ -26,11 +27,11 @@ interface DashboardData {
     date:           string
   }
   month: {
-    sales_total:     number
-    expenses_total:  number
-    purchases_total: number
-    gross_profit:    number
-    net_profit:      number
+    sales_total:    number
+    cogs_total:     number
+    gross_profit:   number
+    expenses_total: number
+    net_profit:     number
   }
   receivables: {
     total_paisa:            number
@@ -40,10 +41,12 @@ interface DashboardData {
     items: Array<{
       egg_category_id: string
       egg_category:    string
+      quantity_eggs:   number
       quantity_trays:  number
       display_order:   number
     }>
     total_trays: number
+    total_eggs:  number
   }
   recent_sales: Array<{
     id:             string
@@ -68,6 +71,7 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data,    setData]    = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [alertDismissed, setAlertDismissed] = useState(false)
 
   useEffect(() => {
     window.fetch('/api/dashboard')
@@ -98,11 +102,28 @@ export default function DashboardPage() {
   }
 
   const lowStockItems = (data?.stock.items ?? []).filter(
-    s => s.quantity_trays < 24 && s.quantity_trays > 0
+    s => s.quantity_eggs > 0 && s.quantity_eggs < 240,
   )
   const outOfStockItems = (data?.stock.items ?? []).filter(
-    s => s.quantity_trays === 0
+    s => s.quantity_eggs === 0,
   )
+
+  const totalStockPeti = Math.floor((data?.stock.total_eggs ?? 0) / 360)
+
+  function stockFromEggs(eggs: number) {
+    return {
+      peti:  Math.floor(eggs / 360),
+      trays: Math.floor((eggs % 360) / 30),
+    }
+  }
+
+  function stockSummary(eggs: number): string {
+    const { peti, trays } = stockFromEggs(eggs)
+    if (peti > 0 && trays > 0) return `${peti} peti ${trays} tray`
+    if (peti > 0) return `${peti} peti`
+    if (trays > 0) return `${trays} tray`
+    return '0'
+  }
 
   return (
     <div className="space-y-6">
@@ -114,39 +135,51 @@ export default function DashboardPage() {
       </div>
 
       {/* Stock alerts */}
-      {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+      {!alertDismissed &&
+        (lowStockItems.length > 0 || outOfStockItems.length > 0) && (
         <div className={`rounded-lg px-4 py-3 border text-sm flex items-start
-                         gap-3 ${
+                         justify-between gap-3 ${
           outOfStockItems.length > 0
             ? 'bg-red-50 border-red-200 text-red-800'
             : 'bg-amber-50 border-amber-200 text-amber-800'
         }`}>
-          <span className="text-base flex-shrink-0">
-            {outOfStockItems.length > 0 ? '🚨' : '⚠️'}
-          </span>
-          <div>
-            {outOfStockItems.length > 0 && (
-              <p className="font-medium">
-                Out of stock:{' '}
-                {outOfStockItems.map(s => s.egg_category).join(', ')}
-              </p>
-            )}
-            {lowStockItems.length > 0 && (
-              <p className={outOfStockItems.length > 0 ? 'mt-0.5' : ''}>
-                Low stock:{' '}
-                {lowStockItems.map(s =>
-                  `${s.egg_category} (${formatQty(s.quantity_trays)})`
-                ).join(', ')}
-              </p>
-            )}
-            <Link
-              href="/stock"
-              className="inline-flex items-center gap-1 mt-1 font-medium
-                         underline underline-offset-2"
-            >
-              View stock <ArrowRight className="w-3 h-3" />
-            </Link>
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="text-base flex-shrink-0">
+              {outOfStockItems.length > 0 ? '🚨' : '⚠️'}
+            </span>
+            <div>
+              {outOfStockItems.length > 0 && (
+                <p className="font-medium">
+                  Out of stock:{' '}
+                  {outOfStockItems.map(s => s.egg_category).join(', ')}
+                </p>
+              )}
+              {lowStockItems.length > 0 && (
+                <p className={outOfStockItems.length > 0 ? 'mt-0.5' : ''}>
+                  Low stock:{' '}
+                  {lowStockItems.map(s =>
+                    `${s.egg_category} (${stockSummary(s.quantity_eggs)})`
+                  ).join(', ')}
+                </p>
+              )}
+              <Link
+                href="/stock"
+                className="inline-flex items-center gap-1 mt-1 font-medium
+                           underline underline-offset-2"
+              >
+                View stock <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setAlertDismissed(true)}
+            className="ml-auto flex-shrink-0 p-0.5 rounded hover:bg-red-100
+                       transition-colors"
+            aria-label="Dismiss alert"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -213,7 +246,10 @@ export default function DashboardPage() {
           <div className="stat-card">
             <p className="stat-label">Stock</p>
             <p className="stat-value">
-              {formatQty(data?.stock.total_trays ?? 0)}
+              {totalStockPeti}
+              <span className="text-sm font-normal text-stone-400 ml-1">
+                peti
+              </span>
             </p>
             <p className="stat-sub">total available</p>
           </div>
@@ -234,9 +270,9 @@ export default function DashboardPage() {
           </div>
 
           <div className="stat-card">
-            <p className="stat-label">Purchases</p>
+            <p className="stat-label">Cost of goods</p>
             <p className="stat-value text-xl text-danger">
-              {formatPKR(data?.month.purchases_total ?? 0)}
+              {formatPKR(data?.month.cogs_total ?? 0)}
             </p>
           </div>
 
@@ -271,10 +307,10 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {(data?.stock.items ?? []).map(cat => {
-            const peti = Math.floor(cat.quantity_trays / 12)
-            const rem  = cat.quantity_trays % 12
-            const low  = cat.quantity_trays < 24
-            const out  = cat.quantity_trays === 0
+            const eggs = cat.quantity_eggs
+            const { peti, trays } = stockFromEggs(eggs)
+            const low  = eggs > 0 && eggs < 240
+            const out  = eggs === 0
             return (
               <div
                 key={cat.egg_category_id}
@@ -295,14 +331,14 @@ export default function DashboardPage() {
                       <span className="text-xs font-normal text-stone-400 ml-1">
                         peti
                       </span>
-                      {rem > 0 && (
-                        <span className="text-sm font-normal text-stone-400 ml-1">
-                          {rem}T
-                        </span>
-                      )}
                     </>
                   )}
                 </p>
+                {!out && trays > 0 && (
+                  <p className="text-sm text-stone-600 mt-0.5">
+                    {trays} tray{trays !== 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
             )
           })}
