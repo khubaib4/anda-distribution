@@ -15,6 +15,7 @@ import {
   effectiveItemPricePaisa,
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
+import { useTenant } from '@/lib/tenant-client'
 import type { BankAccountBalance, Sale } from '@/types'
 
 function accountLabel(account: BankAccountBalance): string {
@@ -34,6 +35,7 @@ export default function SaleDetailModal({
   onUpdated,
 }: Props) {
   const router = useRouter()
+  const { logoUrl } = useTenant()
   const [sale,    setSale]    = useState<Sale & {
     cogs_paisa?: number
     subtotal_paisa?: number
@@ -435,7 +437,9 @@ export default function SaleDetailModal({
           <div className="modal-footer flex-shrink-0 border-t border-stone-100">
             <button
               type="button"
-              onClick={() => generateInvoicePDF(sale)}
+              onClick={() => {
+                generateInvoicePDF(sale, logoUrl).catch(console.error)
+              }}
               className="btn-secondary w-full"
             >
               <Download className="w-4 h-4" />

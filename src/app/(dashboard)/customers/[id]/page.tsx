@@ -20,6 +20,7 @@ import {
   generateCustomerLedgerPDF,
   type LedgerData,
 } from '@/lib/customer-ledger-pdf'
+import { useTenant } from '@/lib/tenant-client'
 import type { CustomerBalance, BankAccountBalance } from '@/types'
 import { SkeletonList } from '@/components/ui/skeleton'
 
@@ -46,6 +47,7 @@ export default function CustomerDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  const { logoUrl } = useTenant()
 
   const [customer,     setCustomer]     = useState<CustomerBalance | null>(null)
   const [ledgerData,   setLedgerData]   = useState<LedgerData | null>(null)
@@ -203,9 +205,13 @@ export default function CustomerDetailPage({
               {ledgerData && customer && (
                 <button
                   type="button"
-                  onClick={() =>
-                    generateCustomerLedgerPDF(customer, ledgerData)
-                  }
+                  onClick={() => {
+                    generateCustomerLedgerPDF(
+                      customer,
+                      ledgerData,
+                      logoUrl,
+                    ).catch(console.error)
+                  }}
                   className="btn-secondary"
                 >
                   <Download className="w-4 h-4" />

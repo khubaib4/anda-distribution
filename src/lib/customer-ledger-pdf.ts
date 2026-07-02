@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { formatPKR, formatDate, customerTypeLabel } from '@/lib/utils'
+import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
 import type { CustomerBalance } from '@/types'
 
 export interface LedgerEntry {
@@ -51,10 +52,11 @@ function safeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9-_]/g, '_').replace(/_+/g, '_')
 }
 
-export function generateCustomerLedgerPDF(
+export async function generateCustomerLedgerPDF(
   customer: CustomerBalance,
   ledgerData: LedgerData,
-): void {
+  logoUrl?: string | null,
+): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
   const margin    = 20
@@ -62,27 +64,21 @@ export function generateCustomerLedgerPDF(
 
   const generatedDate = todayLabel()
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(22)
-  doc.text("Doctor's Egg", margin, y)
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.text('Karachi, Pakistan', margin, y + 8)
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.text('Customer Statement', pageWidth - margin, y, { align: 'right' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(100, 100, 100)
-  doc.text(`Generated: ${generatedDate}`, pageWidth - margin, y + 8, {
-    align: 'right',
+  const headerLayout = await drawPdfBrandedHeader(doc, {
+    margin,
+    pageWidth,
+    y,
+    logoUrl,
+    title:    "Doctor's Egg",
+    subtitle: 'Karachi, Pakistan',
   })
-  doc.setTextColor(0, 0, 0)
 
-  y += 22
+  drawPdfHeaderRight(doc, pageWidth, margin, headerLayout.rightY, [
+    'Customer Statement',
+    `Generated: ${generatedDate}`,
+  ])
+
+  y = headerLayout.dividerY
   doc.setLineWidth(0.4)
   doc.line(margin, y, pageWidth - margin, y)
   y += 10

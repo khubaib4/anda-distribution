@@ -8,6 +8,7 @@ import {
   computeSaleSubtotalPaisa,
   computeSalePaymentBreakdown,
 } from '@/lib/utils'
+import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
 import type { Sale, SaleItem } from '@/types'
 
 function pdfPKR(paisa: number): string {
@@ -56,31 +57,32 @@ function itemDiscountNote(item: SaleItem): string | null {
   })} per peti`
 }
 
-export function generateInvoicePDF(sale: Sale): void {
+export async function generateInvoicePDF(
+  sale: Sale,
+  logoUrl?: string | null,
+): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
   const margin    = 20
   let y           = 22
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(22)
-  doc.text("Doctor's Egg", margin, y)
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.text('Karachi, Pakistan', margin, y + 8)
-
   const invoiceNum = sale.invoice_number ?? '—'
-  doc.setFontSize(10)
-  doc.text(`Invoice: ${invoiceNum}`, pageWidth - margin, y, { align: 'right' })
-  doc.text(
-    `Date: ${formatDate(sale.sale_date)}`,
-    pageWidth - margin,
-    y + 8,
-    { align: 'right' },
-  )
 
-  y += 22
+  const headerLayout = await drawPdfBrandedHeader(doc, {
+    margin,
+    pageWidth,
+    y,
+    logoUrl,
+    title:    "Doctor's Egg",
+    subtitle: 'Karachi, Pakistan',
+  })
+
+  drawPdfHeaderRight(doc, pageWidth, margin, headerLayout.rightY, [
+    `Invoice: ${invoiceNum}`,
+    `Date: ${formatDate(sale.sale_date)}`,
+  ])
+
+  y = headerLayout.dividerY
   doc.setLineWidth(0.4)
   doc.line(margin, y, pageWidth - margin, y)
   y += 12

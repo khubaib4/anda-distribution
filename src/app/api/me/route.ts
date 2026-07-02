@@ -15,6 +15,7 @@ export async function GET() {
       userId:       ctx.userId,
       tenantId:     null,
       tenantName:   null,
+      logoUrl:      null,
       role:         'super_admin',
       isSuperAdmin: true,
       permissions:  getDefaultPermissions('super_admin'),
@@ -29,7 +30,7 @@ export async function GET() {
 
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('name')
+    .select('name, logo_url')
     .eq('id', ctx.tenantId)
     .single()
 
@@ -46,6 +47,7 @@ export async function GET() {
     userId:       ctx.userId,
     tenantId:     ctx.tenantId,
     tenantName:   tenant.name,
+    logoUrl:      tenant.logo_url ?? null,
     role,
     isSuperAdmin: ctx.isSuperAdmin,
     permissions:  getDefaultPermissions(ctx.isSuperAdmin ? 'super_admin' : role),

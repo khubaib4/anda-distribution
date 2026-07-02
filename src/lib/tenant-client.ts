@@ -9,6 +9,7 @@ export interface TenantContext {
   userId:       string
   tenantId:     string | null
   tenantName:   string | null
+  logoUrl:      string | null
   role:         'owner' | 'staff' | 'super_admin'
   isSuperAdmin: boolean
   permissions:  Permissions

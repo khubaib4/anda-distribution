@@ -106,7 +106,7 @@ export async function GET(request: Request) {
   ] = await Promise.all([
     admin
       .from('tenants')
-      .select('id, name, slug, plan, is_active, created_at')
+      .select('id, name, slug, plan, is_active, logo_url, created_at')
       .eq('id', tenantId)
       .maybeSingle(),
     fetchMembers(tenantId),
@@ -145,22 +145,40 @@ export async function PATCH(request: Request) {
 
   const { tenantId } = auth
   const body = await request.json()
-  const { name } = body
+  const { name, logo_url } = body
 
-  if (!name?.trim()) {
-    return NextResponse.json({ error: 'Business name is required' }, { status: 400 })
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (name !== undefined) {
+    if (!name?.trim()) {
+      return NextResponse.json(
+        { error: 'Business name is required' },
+        { status: 400 },
+      )
+    }
+    updates.name = name.trim()
+  }
+
+  if (logo_url !== undefined) {
+    updates.logo_url = logo_url || null
+  }
+
+  if (name === undefined && logo_url === undefined) {
+    return NextResponse.json(
+      { error: 'No fields to update' },
+      { status: 400 },
+    )
   }
 
   const admin = createAdminClient()
 
   const { data, error } = await admin
     .from('tenants')
-    .update({
-      name:       name.trim(),
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq('id', tenantId)
-    .select('id, name, slug, plan, is_active, created_at')
+    .select('id, name, slug, plan, is_active, logo_url, created_at')
     .maybeSingle()
 
   if (error) {

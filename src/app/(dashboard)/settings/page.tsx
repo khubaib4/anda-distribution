@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Copy, Check, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, Check, Trash2, ImageIcon } from 'lucide-react'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024
 
 interface TenantInfo {
   id:         string
@@ -11,6 +13,7 @@ interface TenantInfo {
   slug:       string
   plan:       string
   is_active:  boolean
+  logo_url:   string | null
   created_at: string
 }
 
@@ -43,7 +46,8 @@ function memberInitial(name: string): string {
 
 export default function SettingsPage() {
   const tenantCtx = useTenant()
-  const { permissions } = tenantCtx
+  const { permissions, role } = tenantCtx
+  const canEditLogo = role === 'owner'
 
   const [data,          setData]          = useState<SettingsData | null>(null)
   const [loading,       setLoading]       = useState(true)
@@ -51,6 +55,11 @@ export default function SettingsPage() {
   const [businessName,  setBusinessName]  = useState('')
   const [savingName,    setSavingName]    = useState(false)
   const [nameSuccess,   setNameSuccess]   = useState(false)
+
+  const [logoUrl,       setLogoUrl]       = useState<string | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoRemoving,  setLogoRemoving]  = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [inviting,      setInviting]      = useState(false)
@@ -68,6 +77,7 @@ export default function SettingsPage() {
         }
         setData(d)
         setBusinessName(d.tenant?.name ?? '')
+        setLogoUrl(d.tenant?.logo_url ?? null)
       })
       .catch(() => setError('Failed to load settings'))
       .finally(() => setLoading(false))
@@ -97,6 +107,79 @@ export default function SettingsPage() {
     )
     setNameSuccess(true)
     setSavingName(false)
+  }
+
+  async function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    if (file.size > MAX_LOGO_BYTES) {
+      window.alert('Logo must be 2MB or smaller')
+      return
+    }
+
+    setLogoUploading(true)
+    setError(null)
+
+    const formData = new FormData()
+    formData.append('logo', file)
+
+    try {
+      const res = await window.fetch('/api/settings/logo', {
+        method: 'POST',
+        body:   formData,
+      })
+      const result = await res.json()
+
+      if (!res.ok) {
+        setError(result.error ?? 'Failed to upload logo')
+        return
+      }
+
+      setLogoUrl(result.logo_url ?? null)
+      setData(prev =>
+        prev && prev.tenant
+          ? {
+              ...prev,
+              tenant: { ...prev.tenant, logo_url: result.logo_url ?? null },
+            }
+          : prev,
+      )
+    } catch {
+      setError('Failed to upload logo')
+    } finally {
+      setLogoUploading(false)
+    }
+  }
+
+  async function handleRemoveLogo() {
+    if (!logoUrl) return
+    if (!window.confirm('Remove the company logo?')) return
+
+    setLogoRemoving(true)
+    setError(null)
+
+    const res = await window.fetch('/api/settings', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ logo_url: null }),
+    })
+
+    const result = await res.json()
+    if (!res.ok) {
+      setError(result.error ?? 'Failed to remove logo')
+      setLogoRemoving(false)
+      return
+    }
+
+    setLogoUrl(null)
+    setData(prev =>
+      prev && prev.tenant
+        ? { ...prev, tenant: { ...prev.tenant, logo_url: null } }
+        : prev,
+    )
+    setLogoRemoving(false)
   }
 
   async function handleRemoveMember(member: TeamMember) {
@@ -203,6 +286,63 @@ export default function SettingsPage() {
                 {savingName ? 'Saving…' : 'Save'}
               </button>
             </form>
+          </div>
+
+          {/* Company logo */}
+          <div className="card p-5">
+            <p className="section-title">Company logo</p>
+            <p className="text-xs text-stone-500 mt-1 mb-4">
+              Shown on invoices and customer statements. JPG, PNG, or WebP up to 2MB.
+            </p>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Company logo"
+                  className="max-w-[200px] max-h-24 rounded-lg border
+                             border-stone-200 object-contain bg-white p-2"
+                />
+              ) : (
+                <div className="w-[200px] h-24 rounded-lg border border-dashed
+                                border-stone-300 bg-stone-50 flex items-center
+                                justify-center text-stone-400">
+                  <ImageIcon className="w-8 h-8" />
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                {canEditLogo && (
+                  <>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleLogoSelect}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="btn-secondary"
+                      disabled={logoUploading || logoRemoving}
+                    >
+                      {logoUploading ? 'Uploading…' : 'Upload logo'}
+                    </button>
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="btn-secondary text-danger"
+                        disabled={logoUploading || logoRemoving}
+                      >
+                        {logoRemoving ? 'Removing…' : 'Remove logo'}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Team members */}
