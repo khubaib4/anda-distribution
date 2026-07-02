@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   computeDiscountedPricePaisa,
+  computeLineDiscountSavingPaisa,
   effectiveItemLineTotalPaisa,
   petiPriceStringFromTrayPaisa,
 } from '@/lib/utils'
@@ -92,16 +93,22 @@ export default function SaleItemRow({
 
   function savingMessage(): string | null {
     if (!hasDiscount) return null
+    const totalDiscountPaisa = computeLineDiscountSavingPaisa(
+      totalTrays,
+      item.price_per_tray_paisa,
+      item.discount_type,
+      item.discount_value,
+    )
+    if (totalDiscountPaisa <= 0) return null
+    const totalDiscount = totalDiscountPaisa / 100
+
     if (item.discount_type === 'fixed') {
-      const saving = parseFloat(String(item.discount_value))
-      if (saving <= 0) return null
-      return `Saving ₨${saving.toLocaleString('en-IN')} total`
+      const perPeti = parseFloat(String(item.discount_value))
+      if (perPeti <= 0) return null
+      return `Saving ₨${perPeti.toLocaleString('en-IN')} per peti (₨${totalDiscount.toLocaleString('en-IN', { maximumFractionDigits: 2 })} total)`
     }
     if (item.discount_type === 'percentage') {
-      const savingAmount =
-        (originalLineTotal * item.discount_value / 100) / 100
-      if (savingAmount <= 0) return null
-      return `Saving ${item.discount_value}% (₨${savingAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total)`
+      return `Saving ${item.discount_value}% (₨${totalDiscount.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total)`
     }
     return null
   }
@@ -262,7 +269,11 @@ export default function SaleItemRow({
               </button>
             </div>
             <div>
-              <label className="label">Discount value</label>
+              <label className="label">
+                {item.discount_type === 'fixed'
+                  ? 'Discount per peti (₨)'
+                  : 'Discount (%)'}
+              </label>
               <input
                 type="number"
                 min="0"

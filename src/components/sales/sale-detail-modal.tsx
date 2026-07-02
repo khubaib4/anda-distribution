@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Download } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, Download, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import {
   formatPKR,
@@ -30,6 +31,7 @@ export default function SaleDetailModal({
   onClose,
   onUpdated,
 }: Props) {
+  const router = useRouter()
   const [sale,    setSale]    = useState<Sale & {
     cogs_paisa?: number
     subtotal_paisa?: number
@@ -130,9 +132,18 @@ export default function SaleDetailModal({
               </p>
             )}
           </div>
-          <button onClick={onClose} className="btn-ghost p-1.5 -mr-1.5">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => router.push(`/sales/${saleId}/edit`)}
+              className="btn-ghost p-1.5 text-xs flex items-center gap-1"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Edit sale</span>
+            </button>
+            <button onClick={onClose} className="btn-ghost p-1.5 -mr-1.5">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">

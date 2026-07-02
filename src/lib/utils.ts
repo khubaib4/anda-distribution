@@ -202,8 +202,10 @@ export function computeDiscountedPricePaisa(
     const discountAmount = Math.round(lineTotal * discountValue / 100)
     discountedTotal = Math.max(0, lineTotal - discountAmount)
   } else {
-    const fixedAmountPaisa = Math.round(discountValue * 100)
-    discountedTotal = Math.max(0, lineTotal - fixedAmountPaisa)
+    const discountAmountPaisa = Math.round(
+      (discountValue * 100 / 12) * quantityTrays,
+    )
+    discountedTotal = Math.max(0, lineTotal - discountAmountPaisa)
   }
 
   return Math.round(discountedTotal / quantityTrays)

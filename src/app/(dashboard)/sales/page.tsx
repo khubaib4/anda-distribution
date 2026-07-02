@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, ChevronDown, Pencil } from 'lucide-react'
 import { useSales } from '@/hooks/use-sales'
 import { useCustomers } from '@/hooks/use-customers'
 import SaleDetailModal from '@/components/sales/sale-detail-modal'
@@ -16,6 +17,7 @@ import {
 import { SkeletonList } from '@/components/ui/skeleton'
 
 export default function SalesPage() {
+  const router = useRouter()
   const [status,      setStatus]      = useState('')
   const [customerId,  setCustomerId]  = useState('')
   const [from,        setFrom]        = useState('')
@@ -208,6 +210,7 @@ export default function SalesPage() {
                     <th>Items</th>
                     <th className="text-right">Total</th>
                     <th>Status</th>
+                    <th className="w-12" />
                   </tr>
                 </thead>
                 <tbody>
@@ -264,6 +267,18 @@ export default function SalesPage() {
                             {paymentStatusLabel(sale.payment_status)}
                           </span>
                         </td>
+                        <td>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              router.push(`/sales/${sale.id}/edit`)
+                            }}
+                            className="btn-ghost p-1.5"
+                            aria-label="Edit sale"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
@@ -316,6 +331,16 @@ export default function SalesPage() {
                       )} mt-1`}>
                         {paymentStatusLabel(sale.payment_status)}
                       </span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          router.push(`/sales/${sale.id}/edit`)
+                        }}
+                        className="btn-ghost p-1.5 mt-1"
+                        aria-label="Edit sale"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
