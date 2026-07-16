@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -89,5 +90,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json(data, { status: 201 })
+  try {
+    const allocation = await recalculateCustomerSaleAllocations({
+      supabase,
+      tenantId: writeTenantId,
+      customerId: customer_id,
+    })
+
+    return NextResponse.json({ ...data, allocation }, { status: 201 })
+  } catch (allocationError) {
+    console.error('Customer payment saved but FIFO allocation failed', {
+      tenantId: writeTenantId,
+      customerId: customer_id,
+      paymentId: data.id,
+      error: allocationError,
+    })
+
+    return NextResponse.json(
+      {
+        ...data,
+        allocation_warning:
+          'Payment was recorded, but sale payment statuses could not be updated automatically.',
+      },
+      { status: 201 },
+    )
+  }
 }
