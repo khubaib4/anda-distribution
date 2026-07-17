@@ -32,6 +32,22 @@ export type SaleStockAvailabilityResult = {
   invalidItems: InvalidStockItem[]
 }
 
+export type InsufficientOutboundStockItem = {
+  egg_category_id: string
+  available_eggs: number
+  requested_eggs: number
+  shortage_eggs: number
+  available_trays: number
+  requested_trays: number
+  shortage_trays: number
+}
+
+export type OutboundStockAvailabilityResult = {
+  ok: boolean
+  invalidReason?: string
+  insufficientStock?: InsufficientOutboundStockItem
+}
+
 function isInbound(movementType: string): boolean {
   return IN_TYPES.includes(movementType as (typeof IN_TYPES)[number])
 }
@@ -193,4 +209,76 @@ export async function validateSaleStockAvailability({
     insufficientStock,
     invalidItems: [],
   }
+}
+
+export async function validateOutboundStockAvailability({
+  supabase,
+  tenantId,
+  eggCategoryId,
+  requestedEggs,
+}: {
+  supabase: SupabaseClient
+  tenantId: string
+  eggCategoryId: string
+  requestedEggs: number
+}): Promise<OutboundStockAvailabilityResult> {
+  if (!eggCategoryId) {
+    return { ok: false, invalidReason: 'Egg category is required' }
+  }
+
+  if (
+    typeof requestedEggs !== 'number' ||
+    !Number.isFinite(requestedEggs) ||
+    requestedEggs <= 0
+  ) {
+    return { ok: false, invalidReason: 'Quantity must be greater than 0' }
+  }
+
+  const { data: category, error: categoryError } = await supabase
+    .from('egg_categories')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('id', eggCategoryId)
+    .maybeSingle()
+
+  if (categoryError) throw categoryError
+
+  if (!category) {
+    return {
+      ok: false,
+      invalidReason: 'Egg category does not belong to this tenant',
+    }
+  }
+
+  const { data: movements, error: movementsError } = await supabase
+    .from('stock_movements')
+    .select('egg_category_id, movement_type, quantity_trays, quantity_eggs')
+    .eq('tenant_id', tenantId)
+    .eq('egg_category_id', eggCategoryId)
+
+  if (movementsError) throw movementsError
+
+  let availableEggs = 0
+
+  for (const movement of (movements ?? []) as StockMovementRow[]) {
+    const eggs = movementEggs(movement)
+    availableEggs += isInbound(movement.movement_type) ? eggs : -eggs
+  }
+
+  if (requestedEggs > availableEggs) {
+    return {
+      ok: false,
+      insufficientStock: {
+        egg_category_id: eggCategoryId,
+        available_eggs: availableEggs,
+        requested_eggs: requestedEggs,
+        shortage_eggs: requestedEggs - availableEggs,
+        available_trays: roundTrays(availableEggs / 30),
+        requested_trays: roundTrays(requestedEggs / 30),
+        shortage_trays: roundTrays((requestedEggs - availableEggs) / 30),
+      },
+    }
+  }
+
+  return { ok: true }
 }

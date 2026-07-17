@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { traysToEggs } from '@/lib/utils'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { validateOutboundStockAvailability } from '@/lib/stock-availability'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -84,27 +85,82 @@ export async function POST(request: Request) {
     )
   }
 
+  if (!['eggs', 'trays'].includes(quantity_unit)) {
+    return NextResponse.json(
+      { error: 'Invalid quantity unit' },
+      { status: 400 },
+    )
+  }
+
   let quantity_eggs: number
   let quantity_trays: number
 
   if (quantity_unit === 'eggs') {
-    quantity_eggs = parseInt(String(inputEggs), 10) || 0
-    if (quantity_eggs <= 0) {
+    quantity_eggs = Number(inputEggs)
+    if (
+      !Number.isFinite(quantity_eggs) ||
+      quantity_eggs <= 0 ||
+      !Number.isInteger(quantity_eggs)
+    ) {
       return NextResponse.json(
-        { error: 'Quantity must be greater than 0' },
+        { error: 'Egg quantity must be a whole number greater than 0' },
         { status: 400 },
       )
     }
     quantity_trays = Math.ceil(quantity_eggs / 30)
   } else {
-    quantity_trays = parseFloat(String(inputTrays)) || 0
-    if (quantity_trays <= 0) {
+    quantity_trays = Number(inputTrays)
+    if (!Number.isFinite(quantity_trays) || quantity_trays <= 0) {
       return NextResponse.json(
         { error: 'Quantity must be greater than 0' },
         { status: 400 },
       )
     }
     quantity_eggs = traysToEggs(quantity_trays)
+  }
+
+  if (movement_type === 'adjustment_out') {
+    const availability = await validateOutboundStockAvailability({
+      supabase,
+      tenantId: writeTenantId,
+      eggCategoryId: egg_category_id,
+      requestedEggs: quantity_eggs,
+    })
+
+    if (availability.invalidReason) {
+      return NextResponse.json(
+        { error: availability.invalidReason },
+        { status: 400 },
+      )
+    }
+
+    if (availability.insufficientStock) {
+      return NextResponse.json(
+        {
+          error: 'Insufficient stock',
+          insufficient_stock: availability.insufficientStock,
+        },
+        { status: 409 },
+      )
+    }
+  } else {
+    const { data: category, error: categoryError } = await supabase
+      .from('egg_categories')
+      .select('id')
+      .eq('tenant_id', writeTenantId)
+      .eq('id', egg_category_id)
+      .maybeSingle()
+
+    if (categoryError) {
+      return NextResponse.json({ error: categoryError.message }, { status: 500 })
+    }
+
+    if (!category) {
+      return NextResponse.json(
+        { error: 'Egg category does not belong to this tenant' },
+        { status: 400 },
+      )
+    }
   }
 
   const { data, error } = await supabase
