@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
 import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
@@ -316,5 +317,57 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(sale, { status: 201 })
+  try {
+    const allocation = await recalculateCustomerSaleAllocations({
+      supabase,
+      tenantId: writeTenantId,
+      customerId: customer_id,
+    })
+
+    const { data: refreshedSale, error: refreshError } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('id', sale.id)
+      .eq('tenant_id', writeTenantId)
+      .single()
+
+    if (refreshError) {
+      console.error('Sale FIFO allocation succeeded but sale refresh failed', {
+        tenantId: writeTenantId,
+        customerId: customer_id,
+        saleId: sale.id,
+        invoiceNumber: invoice_number,
+        error: refreshError,
+      })
+
+      return NextResponse.json(
+        {
+          ...sale,
+          allocation,
+          allocation_warning:
+            'Sale was saved and customer payment allocation was refreshed, but updated sale data could not be reloaded automatically.',
+        },
+        { status: 201 },
+      )
+    }
+
+    return NextResponse.json({ ...refreshedSale, allocation }, { status: 201 })
+  } catch (allocationError) {
+    console.error('Sale saved but FIFO allocation failed', {
+      tenantId: writeTenantId,
+      customerId: customer_id,
+      saleId: sale.id,
+      invoiceNumber: invoice_number,
+      error: allocationError,
+    })
+
+    return NextResponse.json(
+      {
+        ...sale,
+        allocation_warning:
+          'Sale was saved, but customer payment allocation could not be refreshed automatically.',
+      },
+      { status: 201 },
+    )
+  }
 }

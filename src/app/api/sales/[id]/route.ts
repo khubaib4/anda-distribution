@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
 import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
@@ -69,6 +70,8 @@ async function syncCustomerPayments(
     amountPaidPaisa: number
     paymentMethod?: string | null
     bankAccountId?: string | null
+    cleanupCustomerIds?: string[]
+    preservePaymentAmountPaisa?: number
     userId?: string | null
   },
 ) {
@@ -82,23 +85,33 @@ async function syncCustomerPayments(
     amountPaidPaisa,
     paymentMethod,
     bankAccountId,
+    cleanupCustomerIds,
+    preservePaymentAmountPaisa,
     userId,
   } = opts
 
   const paidNotes = `Payment for ${invoiceNumber}`
   const partialNotes = `Partial payment for ${invoiceNumber}`
+  const customerIds = Array.from(
+    new Set(
+      [customerId, ...(cleanupCustomerIds ?? [])].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  )
 
   await supabase
     .from('customer_payments')
     .delete()
     .eq('tenant_id', writeTenantId)
+    .in('customer_id', customerIds)
     .in('notes', [paidNotes, partialNotes])
 
   if (paymentStatus === 'paid' && totalPaisa > 0) {
     const { error } = await supabase.from('customer_payments').insert({
       tenant_id:       writeTenantId,
       customer_id:     customerId,
-      amount_paisa:    totalPaisa,
+      amount_paisa:    preservePaymentAmountPaisa ?? totalPaisa,
       payment_date:    saleDate,
       payment_method:  paymentMethod  || null,
       bank_account_id: bankAccountId || null,
@@ -113,7 +126,7 @@ async function syncCustomerPayments(
     const { error } = await supabase.from('customer_payments').insert({
       tenant_id:       writeTenantId,
       customer_id:     customerId,
-      amount_paisa:    amountPaidPaisa,
+      amount_paisa:    preservePaymentAmountPaisa ?? amountPaidPaisa,
       payment_date:    saleDate,
       payment_method:  paymentMethod  || null,
       bank_account_id: bankAccountId || null,
@@ -221,6 +234,7 @@ export async function PATCH(
         sale_date,
         customer_id,
         payment_status,
+        amount_paid_paisa,
         discount_amount_paisa,
         paid_by,
         paid_by_partner_id,
@@ -388,22 +402,90 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const enriched = enrichSale(data)
-  const finalPaymentStatus = data.payment_status
-  const finalCustomerId = data.customer_id
-  const finalSaleDate = data.sale_date
+  let finalData = data
+  let enriched = enrichSale(finalData)
+  const finalPaymentStatus = finalData.payment_status
+  const finalCustomerId = finalData.customer_id
+  const finalSaleDate = finalData.sale_date
+  const paymentStatusExplicitlyChanged =
+    payment_status !== undefined && payment_status !== existing.payment_status
+  const amountPaidExplicitlyChanged =
+    payment_status === 'partial' &&
+    amount_paid_paisa !== undefined &&
+    amount_paid_paisa !== (existing.amount_paid_paisa ?? 0)
+  const paymentExplicitlyChanged =
+    paymentStatusExplicitlyChanged || amountPaidExplicitlyChanged
+  const autoPaymentNotes = [
+    `Payment for ${invoiceNumber}`,
+    `Partial payment for ${invoiceNumber}`,
+  ]
+  const paymentSyncCustomerIds = Array.from(
+    new Set(
+      [existing.customer_id, finalCustomerId].filter(
+        (customerId): customerId is string => Boolean(customerId),
+      ),
+    ),
+  )
+  let hasExistingAutoPayment = false
+  let existingAutoPaymentAmountPaisa = 0
 
-  if (items !== undefined || payment_status !== undefined) {
+  if (invoiceNumber && paymentSyncCustomerIds.length > 0) {
+    const { data: existingAutoPayments, error: autoPaymentLookupError } =
+      await supabase
+        .from('customer_payments')
+        .select('id, amount_paisa')
+        .eq('tenant_id', writeTenantId)
+        .in('customer_id', paymentSyncCustomerIds)
+        .in('notes', autoPaymentNotes)
+
+    if (autoPaymentLookupError) {
+      return NextResponse.json(
+        {
+          error:
+            `Sale saved but auto payment lookup failed: ${autoPaymentLookupError.message}`,
+        },
+        { status: 500 },
+      )
+    }
+
+    hasExistingAutoPayment = (existingAutoPayments ?? []).length > 0
+    existingAutoPaymentAmountPaisa = (existingAutoPayments ?? []).reduce(
+      (sum, payment) => sum + (
+        typeof payment.amount_paisa === 'number' ? payment.amount_paisa : 0
+      ),
+      0,
+    )
+  }
+
+  const shouldSyncCustomerPayments =
+    paymentExplicitlyChanged || hasExistingAutoPayment
+
+  if (shouldSyncCustomerPayments) {
+    const paymentStatusForSync = paymentExplicitlyChanged
+      ? finalPaymentStatus
+      : existingAutoPaymentAmountPaisa >= enriched.total_paisa
+        ? 'paid'
+        : existingAutoPaymentAmountPaisa > 0
+          ? 'partial'
+          : 'unpaid'
+    const amountPaidPaisaForSync = paymentExplicitlyChanged
+      ? finalData.amount_paid_paisa ?? 0
+      : existingAutoPaymentAmountPaisa
+
     const paymentError = await syncCustomerPayments(supabase, {
       writeTenantId,
       customerId:     finalCustomerId,
       invoiceNumber:  invoiceNumber!,
       saleDate:       finalSaleDate,
-      paymentStatus:  finalPaymentStatus,
+      paymentStatus:  paymentStatusForSync,
       totalPaisa:     enriched.total_paisa,
-      amountPaidPaisa: data.amount_paid_paisa ?? 0,
+      amountPaidPaisa: amountPaidPaisaForSync,
       paymentMethod:  payment_method,
       bankAccountId: bank_account_id,
+      cleanupCustomerIds: paymentSyncCustomerIds,
+      preservePaymentAmountPaisa: paymentExplicitlyChanged
+        ? undefined
+        : existingAutoPaymentAmountPaisa,
       userId:         user?.id,
     })
 
@@ -413,32 +495,68 @@ export async function PATCH(
         { status: 500 },
       )
     }
-  } else if (
-    payment_status === 'paid' &&
-    existing.payment_status !== 'paid' &&
-    invoiceNumber
-  ) {
-    const paymentError = await syncCustomerPayments(supabase, {
-      writeTenantId,
-      customerId:     finalCustomerId,
-      invoiceNumber,
-      saleDate:       finalSaleDate,
-      paymentStatus:  'paid',
-      totalPaisa:     enriched.total_paisa,
-      amountPaidPaisa: data.amount_paid_paisa ?? 0,
-      paymentMethod:  payment_method,
-      bankAccountId: bank_account_id,
-      userId:         user?.id,
-    })
+  }
 
-    if (paymentError) {
-      return NextResponse.json({ error: paymentError.message }, { status: 500 })
+  let allocation: unknown
+  let allocationWarning: string | undefined
+  const allocationCustomerIds = Array.from(
+    new Set(
+      [existing.customer_id, finalCustomerId].filter(
+        (customerId): customerId is string => Boolean(customerId),
+      ),
+    ),
+  )
+
+  try {
+    allocation = await Promise.all(
+      allocationCustomerIds.map(async allocationCustomerId => ({
+        customerId: allocationCustomerId,
+        ...(await recalculateCustomerSaleAllocations({
+          supabase,
+          tenantId: writeTenantId,
+          customerId: allocationCustomerId,
+        })),
+      })),
+    )
+
+    const { data: refreshedData, error: refreshError } = await supabase
+      .from('sales')
+      .select(SALE_SELECT)
+      .eq('id', id)
+      .eq('tenant_id', writeTenantId)
+      .single()
+
+    if (refreshError) {
+      console.error('Sale FIFO allocation succeeded but sale refresh failed', {
+        tenantId: writeTenantId,
+        oldCustomerId: existing.customer_id,
+        customerId: finalCustomerId,
+        saleId: id,
+        invoiceNumber,
+        error: refreshError,
+      })
+      allocationWarning =
+        'Sale was saved and customer payment allocation was refreshed, but updated sale data could not be reloaded automatically.'
+    } else {
+      finalData = refreshedData
+      enriched = enrichSale(finalData)
     }
+  } catch (allocationError) {
+    console.error('Sale saved but FIFO allocation failed', {
+      tenantId: writeTenantId,
+      oldCustomerId: existing.customer_id,
+      customerId: finalCustomerId,
+      saleId: id,
+      invoiceNumber,
+      error: allocationError,
+    })
+    allocationWarning =
+      'Sale was saved, but customer payment allocation could not be refreshed automatically.'
   }
 
   const admin = createAdminClient()
   const capitalNotes = `Paid sale: ${invoiceNumber}`
-  const finalPaidBy = data.paid_by ?? 'business'
+  const finalPaidBy = finalData.paid_by ?? 'business'
 
   if (finalPaidBy !== 'partner') {
     await admin
@@ -446,8 +564,8 @@ export async function PATCH(
       .delete()
       .eq('tenant_id', writeTenantId)
       .eq('notes', capitalNotes)
-  } else if (data.paid_by_partner_id) {
-    const partnerSource = data.paid_by_partner_source
+  } else if (finalData.paid_by_partner_id) {
+    const partnerSource = finalData.paid_by_partner_source
     const capitalFields: Record<string, unknown> = {
       amount_paisa:     enriched.total_paisa,
       transaction_date: finalSaleDate,
@@ -456,9 +574,9 @@ export async function PATCH(
 
     if (partnerSource === 'partner') {
       capitalFields.partner_id         = null
-      capitalFields.partner_profile_id = data.paid_by_partner_id
+      capitalFields.partner_profile_id = finalData.paid_by_partner_id
     } else {
-      capitalFields.partner_id         = data.paid_by_partner_id
+      capitalFields.partner_id         = finalData.paid_by_partner_id
       capitalFields.partner_profile_id = null
     }
 
@@ -503,5 +621,12 @@ export async function PATCH(
   }
 
   const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])
-  return NextResponse.json(withPartnerName)
+  if (allocationWarning) {
+    return NextResponse.json({
+      ...withPartnerName,
+      allocation_warning: allocationWarning,
+    })
+  }
+
+  return NextResponse.json({ ...withPartnerName, allocation })
 }
