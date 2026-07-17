@@ -74,10 +74,17 @@ export default function SaleDetailModal({
   }, [editingPayment])
 
   async function handleSavePayment() {
+    if (paymentStatus === 'partial') {
+      setError('Choose Paid or Unpaid before saving payment status.')
+      return
+    }
+
     setSaving(true)
     setError(null)
 
-    const body: Record<string, unknown> = { payment_status: paymentStatus }
+    const body: Record<string, unknown> = {
+      payment_status: paymentStatus,
+    }
     if (paymentStatus === 'paid') {
       body.payment_method = paymentMethod
       if (paymentMethod === 'bank_transfer' && bankAccountId) {
@@ -101,6 +108,11 @@ export default function SaleDetailModal({
       setError(data.error ?? 'Failed to update payment status')
     }
     setSaving(false)
+  }
+
+  function startPaymentEdit() {
+    setPaymentStatus(sale?.payment_status ?? 'unpaid')
+    setEditingPayment(true)
   }
 
   const subtotalPaisa = sale?.subtotal_paisa
@@ -325,7 +337,7 @@ export default function SaleDetailModal({
                   <p className="section-title mb-0">Payment</p>
                   {!editingPayment && (
                     <button
-                      onClick={() => setEditingPayment(true)}
+                      onClick={startPaymentEdit}
                       className="btn-ghost text-xs py-1 px-2"
                     >
                       Update
@@ -350,10 +362,19 @@ export default function SaleDetailModal({
                           )
                         }
                       >
+                        {sale.payment_status === 'partial' && (
+                          <option value="partial" disabled>
+                            Partial (current)
+                          </option>
+                        )}
                         <option value="unpaid">Unpaid</option>
-                        <option value="partial">Partial</option>
                         <option value="paid">Paid</option>
                       </select>
+                      <p className="text-xs text-stone-500 leading-relaxed mt-1.5">
+                        For partial payments, record a customer payment from the
+                        customer profile. Invoices will update automatically
+                        using FIFO.
+                      </p>
                     </div>
 
                     {paymentStatus === 'paid' && (
@@ -411,7 +432,7 @@ export default function SaleDetailModal({
                       <button
                         onClick={handleSavePayment}
                         className="btn-primary flex-1"
-                        disabled={saving}
+                        disabled={saving || paymentStatus === 'partial'}
                       >
                         {saving ? 'Saving…' : 'Save'}
                       </button>
