@@ -4,6 +4,7 @@ import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
+import { validateSaleStockAvailability } from '@/lib/stock-availability'
 import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
@@ -252,6 +253,35 @@ export async function PATCH(
   }
 
   const invoiceNumber = existing.invoice_number
+
+  if (items !== undefined) {
+    const stockAvailability = await validateSaleStockAvailability({
+      supabase,
+      tenantId: writeTenantId,
+      items,
+      existingSaleId: id,
+    })
+
+    if (stockAvailability.invalidItems.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Invalid sale stock request',
+          invalid_items: stockAvailability.invalidItems,
+        },
+        { status: 400 },
+      )
+    }
+
+    if (!stockAvailability.ok) {
+      return NextResponse.json(
+        {
+          error: 'Insufficient stock',
+          insufficient_stock: stockAvailability.insufficientStock,
+        },
+        { status: 409 },
+      )
+    }
+  }
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),

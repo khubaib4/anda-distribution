@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
+import { validateSaleStockAvailability } from '@/lib/stock-availability'
 import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
@@ -131,6 +132,32 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+  }
+
+  const stockAvailability = await validateSaleStockAvailability({
+    supabase,
+    tenantId: writeTenantId,
+    items,
+  })
+
+  if (stockAvailability.invalidItems.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'Invalid sale stock request',
+        invalid_items: stockAvailability.invalidItems,
+      },
+      { status: 400 },
+    )
+  }
+
+  if (!stockAvailability.ok) {
+    return NextResponse.json(
+      {
+        error: 'Insufficient stock',
+        insufficient_stock: stockAvailability.insufficientStock,
+      },
+      { status: 409 },
+    )
   }
 
   const categoryIds = [...new Set(items.map((i: { egg_category_id: string }) =>
