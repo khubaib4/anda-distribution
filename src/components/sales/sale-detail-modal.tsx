@@ -16,12 +16,7 @@ import {
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import { useTenant } from '@/lib/tenant-client'
-import type { BankAccountBalance, Sale } from '@/types'
-
-function accountLabel(account: BankAccountBalance): string {
-  if (account.nickname) return account.nickname
-  return `${account.bank_name} — ${account.account_holder}`
-}
+import type { Sale } from '@/types'
 
 interface Props {
   saleId:    string
@@ -32,7 +27,6 @@ interface Props {
 export default function SaleDetailModal({
   saleId,
   onClose,
-  onUpdated,
 }: Props) {
   const router = useRouter()
   const { logoUrl } = useTenant()
@@ -41,79 +35,17 @@ export default function SaleDetailModal({
     subtotal_paisa?: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState<string | null>(null)
-
-  const [editingPayment, setEditingPayment] = useState(false)
-  const [paymentStatus,  setPaymentStatus]  = useState<
-    'paid' | 'partial' | 'unpaid'
-  >('unpaid')
-  const [paymentMethod,  setPaymentMethod]  = useState('cash')
-  const [bankAccountId,  setBankAccountId]  = useState('')
-  const [bankAccounts,   setBankAccounts]   = useState<BankAccountBalance[]>([])
 
   useEffect(() => {
     window.fetch(`/api/sales/${saleId}`)
       .then(r => r.json())
       .then(data => {
         setSale(data)
-        setPaymentStatus(data.payment_status)
       })
       .catch(() => setError('Failed to load sale'))
       .finally(() => setLoading(false))
   }, [saleId])
-
-  useEffect(() => {
-    if (!editingPayment) return
-    window.fetch('/api/accounts')
-      .then(r => r.json())
-      .then((data: BankAccountBalance[]) =>
-        setBankAccounts(data.filter(a => a.is_active))
-      )
-      .catch(console.error)
-  }, [editingPayment])
-
-  async function handleSavePayment() {
-    if (paymentStatus === 'partial') {
-      setError('Choose Paid or Unpaid before saving payment status.')
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-
-    const body: Record<string, unknown> = {
-      payment_status: paymentStatus,
-    }
-    if (paymentStatus === 'paid') {
-      body.payment_method = paymentMethod
-      if (paymentMethod === 'bank_transfer' && bankAccountId) {
-        body.bank_account_id = bankAccountId
-      }
-    }
-
-    const res = await window.fetch(`/api/sales/${saleId}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    })
-
-    if (res.ok) {
-      const updated = await res.json()
-      setSale(prev => prev ? { ...prev, ...updated } : null)
-      setEditingPayment(false)
-      onUpdated()
-    } else {
-      const data = await res.json().catch(() => ({}))
-      setError(data.error ?? 'Failed to update payment status')
-    }
-    setSaving(false)
-  }
-
-  function startPaymentEdit() {
-    setPaymentStatus(sale?.payment_status ?? 'unpaid')
-    setEditingPayment(true)
-  }
 
   const subtotalPaisa = sale?.subtotal_paisa
     ?? computeSaleSubtotalPaisa(sale?.items ?? [])
@@ -333,112 +265,21 @@ export default function SaleDetailModal({
               <div className="divider" />
 
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0">Payment</p>
-                  {!editingPayment && (
-                    <button
-                      onClick={startPaymentEdit}
-                      className="btn-ghost text-xs py-1 px-2"
-                    >
-                      Update
-                    </button>
-                  )}
-                </div>
-
-                {!editingPayment ? (
-                  <span className={paymentStatusClass(sale.payment_status)}>
-                    {paymentStatusLabel(sale.payment_status)}
-                  </span>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="form-group">
-                      <label className="label">Payment status</label>
-                      <select
-                        className="select"
-                        value={paymentStatus}
-                        onChange={e =>
-                          setPaymentStatus(
-                            e.target.value as 'paid' | 'partial' | 'unpaid'
-                          )
-                        }
-                      >
-                        {sale.payment_status === 'partial' && (
-                          <option value="partial" disabled>
-                            Partial (current)
-                          </option>
-                        )}
-                        <option value="unpaid">Unpaid</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                      <p className="text-xs text-stone-500 leading-relaxed mt-1.5">
-                        For partial payments, record a customer payment from the
-                        customer profile. Invoices will update automatically
-                        using FIFO.
-                      </p>
-                    </div>
-
-                    {paymentStatus === 'paid' && (
-                      <>
-                        <div className="form-group">
-                          <label className="label">Payment method</label>
-                          <select
-                            className="select"
-                            value={paymentMethod}
-                            onChange={e => {
-                              setPaymentMethod(e.target.value)
-                              if (e.target.value !== 'bank_transfer') {
-                                setBankAccountId('')
-                              }
-                            }}
-                          >
-                            <option value="cash">Cash</option>
-                            <option value="bank_transfer">Bank transfer</option>
-                            <option value="easypaisa">Easypaisa</option>
-                            <option value="jazzcash">JazzCash</option>
-                          </select>
-                        </div>
-
-                        {paymentMethod === 'bank_transfer' && (
-                          <div className="form-group">
-                            <label className="label">Bank account</label>
-                            <select
-                              className="select"
-                              value={bankAccountId}
-                              onChange={e => setBankAccountId(e.target.value)}
-                            >
-                              <option value="">Select account…</option>
-                              {bankAccounts.map(account => (
-                                <option
-                                  key={account.bank_account_id}
-                                  value={account.bank_account_id}
-                                >
-                                  {accountLabel(account)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingPayment(false)}
-                        className="btn-secondary flex-1"
-                        disabled={saving}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSavePayment}
-                        className="btn-primary flex-1"
-                        disabled={saving || paymentStatus === 'partial'}
-                      >
-                        {saving ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <p className="section-title mb-3">Payment</p>
+                <span className={paymentStatusClass(sale.payment_status)}>
+                  {paymentStatusLabel(sale.payment_status)}
+                </span>
+                <p className="text-xs text-stone-500 leading-relaxed mt-2">
+                  Record customer payments from the customer profile. Invoice
+                  status updates automatically using FIFO.
+                </p>
+                <Link
+                  href={`/customers/${sale.customer_id}`}
+                  onClick={onClose}
+                  className="btn-secondary mt-3 inline-flex text-xs"
+                >
+                  Go to customer profile
+                </Link>
               </div>
 
               {sale.notes && (

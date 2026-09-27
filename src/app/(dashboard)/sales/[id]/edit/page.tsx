@@ -15,17 +15,13 @@ import {
   todayString,
   formatPKR,
   formatQty,
-  toPaisa,
+  paymentStatusClass,
+  paymentStatusLabel,
   effectiveItemLineTotalPaisa,
   computeDiscountAmountPaisa,
 } from '@/lib/utils'
 import { cache } from '@/lib/cache'
-import type { BankAccountBalance, PartnerOption, Sale } from '@/types'
-
-function accountLabel(account: BankAccountBalance): string {
-  if (account.nickname) return account.nickname
-  return `${account.bank_name} — ${account.account_holder}`
-}
+import type { PartnerOption, Sale } from '@/types'
 
 function newItem(): SaleItemDraft {
   return {
@@ -91,13 +87,7 @@ export default function EditSalePage() {
   const [paymentStatus, setPaymentStatus] = useState<
     'paid' | 'partial' | 'unpaid'
   >('unpaid')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
-  const [bankAccountId, setBankAccountId] = useState('')
   const [dueDate,           setDueDate]           = useState('')
-  const [partialAmount,     setPartialAmount]     = useState('')
-  const [partialMethod,     setPartialMethod]     = useState('cash')
-  const [partialBankAccountId, setPartialBankAccountId] = useState('')
-  const [bankAccounts,  setBankAccounts]  = useState<BankAccountBalance[]>([])
   const [notes,         setNotes]         = useState('')
 
   const [saleDiscountOn,   setSaleDiscountOn]   = useState(false)
@@ -117,13 +107,6 @@ export default function EditSalePage() {
   const [error,  setError]  = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
-      .then((data: BankAccountBalance[]) =>
-        setBankAccounts(data.filter(a => a.is_active))
-      )
-      .catch(console.error)
-
     window.fetch('/api/partners')
       .then(r => r.json())
       .then((data: PartnerOption[]) => setPartners(data))
@@ -147,10 +130,6 @@ export default function EditSalePage() {
         setPaymentStatus(sale.payment_status)
         setDueDate(sale.due_date ?? '')
         setNotes(sale.notes ?? '')
-
-        if (sale.payment_status === 'partial' && sale.amount_paid_paisa) {
-          setPartialAmount(String(sale.amount_paid_paisa / 100))
-        }
 
         const hasSaleDiscount =
           !!sale.discount_type && (sale.discount_amount_paisa ?? 0) > 0
@@ -275,18 +254,6 @@ export default function EditSalePage() {
       }
     }
 
-    if (paymentStatus === 'partial') {
-      const paid = parseFloat(partialAmount)
-      if (!partialAmount || isNaN(paid) || paid <= 0) {
-        setError('Amount paid is required for partial payment')
-        return
-      }
-      if (toPaisa(paid) >= grandTotalPaisa) {
-        setError('Partial amount must be less than the sale total')
-        return
-      }
-    }
-
     if (paidBy === 'partner' && !paidByPartnerId) {
       setError('Please select a partner')
       return
@@ -304,17 +271,11 @@ export default function EditSalePage() {
       const payload: Record<string, unknown> = {
         customer_id:    customerId,
         sale_date:      saleDate,
-        payment_status: paymentStatus,
         notes:          notes || null,
         due_date:       dueDate || null,
         discount_type:  saleDiscountOn ? saleDiscountType : null,
         discount_value: saleDiscountOn ? saleDiscountValueNum : 0,
         discount_amount_paisa: saleDiscountAmountPaisa,
-        amount_paid_paisa: paymentStatus === 'paid'
-          ? grandTotalPaisa
-          : paymentStatus === 'partial'
-            ? toPaisa(partialAmount)
-            : 0,
         paid_by: paidBy,
         ...(paidBy === 'partner'
           ? {
@@ -330,18 +291,6 @@ export default function EditSalePage() {
           discount_value:         item.discount_value,
           discounted_price_paisa: item.discounted_price_paisa,
         })),
-      }
-
-      if (paymentStatus === 'paid') {
-        payload.payment_method = paymentMethod
-        if (paymentMethod === 'bank_transfer' && bankAccountId) {
-          payload.bank_account_id = bankAccountId
-        }
-      } else if (paymentStatus === 'partial') {
-        payload.payment_method = partialMethod
-        if (partialMethod === 'bank_transfer' && partialBankAccountId) {
-          payload.bank_account_id = partialBankAccountId
-        }
       }
 
       const res = await fetch(`/api/sales/${saleId}`, {
@@ -539,21 +488,15 @@ export default function EditSalePage() {
         <div className="card p-4 space-y-4">
           <p className="section-title">Payment</p>
 
-          <div className="form-group">
-            <label className="label">Payment status</label>
-            <select
-              className="select"
-              value={paymentStatus}
-              onChange={e =>
-                setPaymentStatus(
-                  e.target.value as 'paid' | 'partial' | 'unpaid',
-                )
-              }
-            >
-              <option value="unpaid">Unpaid — collect later</option>
-              <option value="partial">Partial payment</option>
-              <option value="paid">Paid — cash on delivery</option>
-            </select>
+          <div>
+            <p className="label mb-2">Current payment status</p>
+            <span className={paymentStatusClass(paymentStatus)}>
+              {paymentStatusLabel(paymentStatus)}
+            </span>
+            <p className="text-xs text-stone-500 mt-2">
+              Record customer payments from the customer profile. Invoice
+              status updates automatically using FIFO.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -620,135 +563,18 @@ export default function EditSalePage() {
             )}
           </div>
 
-          {paymentStatus === 'unpaid' && (
-            <div className="form-group">
-              <label className="label">Payment due date</label>
-              <input
-                type="date"
-                className="input"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-              />
-            </div>
-          )}
-
-          {paymentStatus === 'partial' && (
-            <>
-              <div className="form-group">
-                <label className="label">
-                  Amount paid (₨) <span className="text-danger">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input"
-                  placeholder="0.00"
-                  value={partialAmount}
-                  onChange={e => setPartialAmount(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">Payment method</label>
-                <select
-                  className="select"
-                  value={partialMethod}
-                  onChange={e => {
-                    setPartialMethod(e.target.value)
-                    if (e.target.value !== 'bank_transfer') {
-                      setPartialBankAccountId('')
-                    }
-                  }}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="easypaisa">Easypaisa</option>
-                  <option value="jazzcash">JazzCash</option>
-                </select>
-              </div>
-
-              {partialMethod === 'bank_transfer' && (
-                <div className="form-group">
-                  <label className="label">Bank account</label>
-                  <select
-                    className="select"
-                    value={partialBankAccountId}
-                    onChange={e => setPartialBankAccountId(e.target.value)}
-                  >
-                    <option value="">Select account…</option>
-                    {bankAccounts.map(account => (
-                      <option
-                        key={account.bank_account_id}
-                        value={account.bank_account_id}
-                      >
-                        {accountLabel(account)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label className="label">Payment due date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                />
-              </div>
-            </>
-          )}
+          <div className="form-group">
+            <label className="label">Payment due date</label>
+            <input
+              type="date"
+              className="input"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+            />
+          </div>
 
           {paymentStatus === 'paid' && (
-            <>
-              <div className="form-group">
-                <label className="label">Payment method</label>
-                <select
-                  className="select"
-                  value={paymentMethod}
-                  onChange={e => {
-                    setPaymentMethod(e.target.value)
-                    if (e.target.value !== 'bank_transfer') {
-                      setBankAccountId('')
-                    }
-                  }}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="easypaisa">Easypaisa</option>
-                  <option value="jazzcash">JazzCash</option>
-                </select>
-              </div>
-
-              {paymentMethod === 'bank_transfer' && (
-                <div className="form-group">
-                  <label className="label">Bank account</label>
-                  <select
-                    className="select"
-                    value={bankAccountId}
-                    onChange={e => setBankAccountId(e.target.value)}
-                  >
-                    <option value="">Select account…</option>
-                    {bankAccounts.map(account => (
-                      <option
-                        key={account.bank_account_id}
-                        value={account.bank_account_id}
-                      >
-                        {accountLabel(account)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {grandTotalPaisa > 0 && (
-                <p className="text-sm text-success">
-                  Full amount {formatPKR(grandTotalPaisa)} will be marked as paid
-                </p>
-              )}
-
+            <div>
               <div className="form-group">
                 <label className="label">Paid by</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -830,7 +656,7 @@ export default function EditSalePage() {
                   )}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
 
