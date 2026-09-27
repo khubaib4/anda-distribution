@@ -95,6 +95,11 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
   const selectedPaidByPartner = partners.find(
     p => p.id === paidByPartnerId && p.source === paidByPartnerSource,
   )
+  const historicalPartnerMissing = isEdit && initial.paid_by === 'partner' &&
+    initial.paid_by_partner_id && initial.paid_by_partner_source &&
+    !partners.some(p =>
+      p.id === initial.paid_by_partner_id && p.source === initial.paid_by_partner_source,
+    )
 
   function handleCategoryChange(id: string) {
     setCategoryId(id)
@@ -385,6 +390,11 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
               }}
             >
               <option value="">Select partner…</option>
+              {historicalPartnerMissing && (
+                <option value={`${initial.paid_by_partner_source}:${initial.paid_by_partner_id}`}>
+                  {initial.paid_by_partner_name ?? initial.paid_by_partner_id} (historical)
+                </option>
+              )}
               {partners.map(p => (
                 <option key={`${p.source}:${p.id}`} value={`${p.source}:${p.id}`}>
                   {p.full_name}

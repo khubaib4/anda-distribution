@@ -6,6 +6,7 @@ import { useExpenses, useExpenseCategories } from '@/hooks/use-expenses'
 import ExpenseForm from '@/components/expenses/expense-form'
 import { formatPKR, formatDate } from '@/lib/utils'
 import { SkeletonList } from '@/components/ui/skeleton'
+import { useTenant } from '@/lib/tenant-client'
 import type { Expense } from '@/types'
 
 type ExpensePayload = Parameters<
@@ -13,7 +14,9 @@ type ExpensePayload = Parameters<
 >[0]
 
 export default function ExpensesPage() {
+  const { permissions } = useTenant()
   const [showForm,       setShowForm]       = useState(false)
+  const [deleteError,    setDeleteError]    = useState<string | null>(null)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [categoryId,     setCategoryId]     = useState('')
   const [from,           setFrom]           = useState('')
@@ -77,7 +80,12 @@ export default function ExpensesPage() {
 
   async function handleDelete(expense: Expense) {
     if (!window.confirm(`Delete "${expense.description}"?`)) return
-    await deleteExpense(expense.id)
+    setDeleteError(null)
+    try {
+      await deleteExpense(expense.id)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete expense')
+    }
   }
 
   const hasFilters = categoryId || from || to
@@ -263,10 +271,10 @@ export default function ExpensesPage() {
       </div>
 
       {/* Error */}
-      {error && (
+      {(deleteError || error) && (
         <div className="mb-4 text-sm text-danger bg-red-50 border
                         border-red-200 rounded px-4 py-3">
-          {error}
+          {deleteError || error}
         </div>
       )}
 
@@ -364,13 +372,15 @@ export default function ExpensesPage() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(expense)}
-                            className="btn-ghost p-1.5 text-danger"
-                            aria-label="Delete expense"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {permissions.canDeleteRecords && (
+                            <button
+                              onClick={() => handleDelete(expense)}
+                              className="btn-ghost p-1.5 text-danger"
+                              aria-label="Delete expense"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -442,13 +452,15 @@ export default function ExpensesPage() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => handleDelete(expense)}
-                        className="btn-ghost p-1.5 text-danger"
-                        aria-label="Delete expense"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {permissions.canDeleteRecords && (
+                        <button
+                          onClick={() => handleDelete(expense)}
+                          className="btn-ghost p-1.5 text-danger"
+                          aria-label="Delete expense"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

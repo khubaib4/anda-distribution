@@ -211,6 +211,12 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
+  if (typeof reference === 'string' && reference.trim().toLowerCase().startsWith('expense:')) {
+    return NextResponse.json(
+      { error: 'References beginning with expense: are reserved for expense capital entries' },
+      { status: 400 },
+    )
+  }
 
   const { data, error } = await supabase
     .from('capital_transactions')

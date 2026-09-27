@@ -107,6 +107,55 @@ export async function POST(request: Request) {
     )
   }
 
+  const partnerSource = paid_by_partner_source === 'partner' ? 'partner' : 'profile'
+  if (paidBy === 'partner') {
+    if (paid_by_partner_source && !['profile', 'partner'].includes(paid_by_partner_source)) {
+      return NextResponse.json({ error: 'Invalid partner source' }, { status: 400 })
+    }
+
+    if (partnerSource === 'partner') {
+      const { data: partner, error: partnerError } = await supabase
+        .from('partners')
+        .select('id')
+        .eq('id', paid_by_partner_id)
+        .eq('tenant_id', writeTenantId)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (partnerError) {
+        return NextResponse.json({ error: partnerError.message }, { status: 500 })
+      }
+      if (!partner) {
+        return NextResponse.json({ error: 'Partner is not eligible for this tenant' }, { status: 400 })
+      }
+    } else {
+      const [profileResult, tenantResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, role')
+          .eq('id', paid_by_partner_id)
+          .eq('tenant_id', writeTenantId)
+          .maybeSingle(),
+        supabase
+          .from('tenants')
+          .select('owner_id')
+          .eq('id', writeTenantId)
+          .maybeSingle(),
+      ])
+
+      if (profileResult.error || tenantResult.error) {
+        return NextResponse.json(
+          { error: (profileResult.error ?? tenantResult.error)?.message },
+          { status: 500 },
+        )
+      }
+      const profile = profileResult.data
+      if (!profile || (profile.role !== 'partner' && profile.id !== tenantResult.data?.owner_id)) {
+        return NextResponse.json({ error: 'Partner is not eligible for this tenant' }, { status: 400 })
+      }
+    }
+  }
+
   const trimmedDescription = description.trim()
 
   const { data, error } = await supabase
@@ -125,7 +174,7 @@ export async function POST(request: Request) {
       bank_account_id:        bank_account_id        || null,
       paid_by:                paidBy,
       paid_by_partner_id:     paidBy === 'partner' ? paid_by_partner_id : null,
-      paid_by_partner_source: paidBy === 'partner' ? paid_by_partner_source : null,
+      paid_by_partner_source: paidBy === 'partner' ? partnerSource : null,
       created_by:             user?.id               || null,
     })
     .select(`*, category:expense_categories(id, name, icon)`)
@@ -142,11 +191,11 @@ export async function POST(request: Request) {
       amount_paisa,
       transaction_date: expense_date,
       notes:            `Paid expense: ${trimmedDescription}`,
-      reference:        null,
+      reference:        `expense:${data.id}`,
       created_by:       user?.id || null,
     }
 
-    if (paid_by_partner_source === 'partner') {
+    if (partnerSource === 'partner') {
       capitalInsert.partner_id         = null
       capitalInsert.partner_profile_id = paid_by_partner_id
     } else {
@@ -159,8 +208,17 @@ export async function POST(request: Request) {
       .insert(capitalInsert)
 
     if (capitalError) {
+      console.error('Expense capital creation failed', {
+        tenant_id: writeTenantId,
+        expense_id: data.id,
+        error: capitalError,
+      })
       return NextResponse.json(
-        { error: `Expense saved but capital entry failed: ${capitalError.message}` },
+        {
+          error: 'Expense saved but capital sync failed; reconcile before creating another expense',
+          expense_id: data.id,
+          capital_sync_failed: true,
+        },
         { status: 500 },
       )
     }

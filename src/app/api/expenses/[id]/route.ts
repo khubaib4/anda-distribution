@@ -3,11 +3,33 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichExpensesWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getDefaultPermissions } from '@/lib/permissions'
 
 const EXPENSE_SELECT = `
   *,
   category:expense_categories(id, name, icon)
 `
+
+function capitalSyncFailure(
+  phase: string,
+  tenantId: string,
+  expenseId: string,
+  error: unknown,
+) {
+  console.error(`Expense capital ${phase} failed`, {
+    tenant_id: tenantId,
+    expense_id: expenseId,
+    error,
+  })
+  return NextResponse.json(
+    {
+      error: `Expense saved but capital ${phase} failed; manual reconciliation is required`,
+      expense_id: expenseId,
+      capital_sync_failed: true,
+    },
+    { status: 500 },
+  )
+}
 
 export async function GET(
   request: Request,
@@ -88,13 +110,6 @@ export async function PATCH(
     )
   }
 
-  if (paid_by === 'partner' && !paid_by_partner_id) {
-    return NextResponse.json(
-      { error: 'Partner is required when paid by partner' },
-      { status: 400 },
-    )
-  }
-
   const { data: existing, error: fetchError } = await supabase
     .from('expenses')
     .select(`
@@ -110,7 +125,120 @@ export async function PATCH(
     .single()
 
   if (fetchError || !existing) {
-    return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
+    const status = fetchError && fetchError.code !== 'PGRST116' ? 500 : 404
+    return NextResponse.json(
+      { error: status === 404 ? 'Expense not found' : fetchError?.message },
+      { status },
+    )
+  }
+
+  const stableReference = `expense:${id}`
+  const admin = createAdminClient()
+  const { data: linkedCapital, error: capitalLookupError } = await admin
+    .from('capital_transactions')
+    .select('id, type')
+    .eq('tenant_id', writeTenantId)
+    .eq('reference', stableReference)
+    .limit(2)
+
+  if (capitalLookupError) {
+    console.error('Expense capital lookup failed', {
+      tenant_id: writeTenantId,
+      expense_id: id,
+      error: capitalLookupError,
+    })
+    return NextResponse.json({ error: 'Could not verify expense capital link' }, { status: 500 })
+  }
+  if ((linkedCapital?.length ?? 0) > 1) {
+    return NextResponse.json(
+      { error: 'Multiple capital records are linked to this expense. Reconciliation is required.' },
+      { status: 409 },
+    )
+  }
+  if (linkedCapital?.length === 1 && linkedCapital[0].type !== 'contribution') {
+    return NextResponse.json(
+      { error: 'The linked capital record is not a contribution. Reconciliation is required.' },
+      { status: 409 },
+    )
+  }
+  if (existing.paid_by === 'partner' && !linkedCapital?.length) {
+    return NextResponse.json(
+      { error: 'This partner-paid expense has legacy capital data that must be reconciled before editing.' },
+      { status: 409 },
+    )
+  }
+  if (existing.paid_by !== 'partner' && linkedCapital?.length) {
+    return NextResponse.json(
+      { error: 'This business-paid expense still has linked capital data. Reconciliation is required.' },
+      { status: 409 },
+    )
+  }
+
+  const finalPaidBy = paid_by === undefined
+    ? existing.paid_by ?? 'business'
+    : paid_by === 'partner' ? 'partner' : 'business'
+  const finalPartnerId = paid_by_partner_id === undefined
+    ? existing.paid_by_partner_id
+    : paid_by_partner_id
+  const finalPartnerSource = paid_by_partner_source === undefined
+    ? existing.paid_by_partner_source ?? 'profile'
+    : paid_by_partner_source
+  const payerChanged = finalPaidBy !== existing.paid_by ||
+    finalPartnerId !== existing.paid_by_partner_id ||
+    finalPartnerSource !== existing.paid_by_partner_source
+
+  if (finalPaidBy === 'partner') {
+    if (!finalPartnerId) {
+      return NextResponse.json(
+        { error: 'Partner is required when paid by partner' },
+        { status: 400 },
+      )
+    }
+    if (finalPartnerSource !== 'profile' && finalPartnerSource !== 'partner') {
+      return NextResponse.json({ error: 'Invalid partner source' }, { status: 400 })
+    }
+
+    if (finalPartnerSource === 'partner') {
+      let partnerQuery = supabase
+        .from('partners')
+        .select('id')
+        .eq('id', finalPartnerId)
+        .eq('tenant_id', writeTenantId)
+      if (payerChanged) partnerQuery = partnerQuery.eq('is_active', true)
+      const { data: partner, error: partnerError } = await partnerQuery.maybeSingle()
+
+      if (partnerError) {
+        return NextResponse.json({ error: partnerError.message }, { status: 500 })
+      }
+      if (!partner) {
+        return NextResponse.json({ error: 'Partner is not eligible for this tenant' }, { status: 400 })
+      }
+    } else {
+      const [profileResult, tenantResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, role')
+          .eq('id', finalPartnerId)
+          .eq('tenant_id', writeTenantId)
+          .maybeSingle(),
+        supabase
+          .from('tenants')
+          .select('owner_id')
+          .eq('id', writeTenantId)
+          .maybeSingle(),
+      ])
+
+      if (profileResult.error || tenantResult.error) {
+        return NextResponse.json(
+          { error: (profileResult.error ?? tenantResult.error)?.message },
+          { status: 500 },
+        )
+      }
+      const profile = profileResult.data
+      if (!profile || (payerChanged && profile.role !== 'partner' && profile.id !== tenantResult.data?.owner_id)) {
+        return NextResponse.json({ error: 'Partner is not eligible for this tenant' }, { status: 400 })
+      }
+    }
   }
 
   const updates: Record<string, unknown> = {
@@ -127,16 +255,17 @@ export async function PATCH(
   if (labor_type   !== undefined) updates.labor_type  = labor_type   || null
   if (notes        !== undefined) updates.notes       = notes        || null
 
-  if (paid_by !== undefined) {
-    const paidBy = paid_by === 'partner' ? 'partner' : 'business'
-    updates.paid_by = paidBy
-    if (paidBy === 'partner') {
-      updates.paid_by_partner_id     = paid_by_partner_id
-      updates.paid_by_partner_source = paid_by_partner_source
-    } else {
-      updates.paid_by_partner_id     = null
-      updates.paid_by_partner_source = null
-    }
+  if (paid_by !== undefined) updates.paid_by = finalPaidBy
+  if (finalPaidBy === 'partner' && (
+    paid_by !== undefined ||
+    paid_by_partner_id !== undefined ||
+    paid_by_partner_source !== undefined
+  )) {
+    updates.paid_by_partner_id     = finalPartnerId
+    updates.paid_by_partner_source = finalPartnerSource
+  } else if (paid_by !== undefined) {
+    updates.paid_by_partner_id     = null
+    updates.paid_by_partner_source = null
   }
 
   const { data, error } = await supabase
@@ -155,60 +284,33 @@ export async function PATCH(
     )
   }
 
-  const admin = createAdminClient()
-  const oldCapitalNotes = `Paid expense: ${existing.description.trim()}`
-  const newCapitalNotes = `Paid expense: ${data.description.trim()}`
-  const finalPaidBy = data.paid_by ?? 'business'
-
-  if (finalPaidBy !== 'partner') {
-    await admin
-      .from('capital_transactions')
-      .delete()
-      .eq('tenant_id', writeTenantId)
-      .eq('notes', oldCapitalNotes)
-
-    if (oldCapitalNotes !== newCapitalNotes) {
-      await admin
-        .from('capital_transactions')
-        .delete()
-        .eq('tenant_id', writeTenantId)
-        .eq('notes', newCapitalNotes)
-    }
-  } else if (data.paid_by_partner_id) {
-    const partnerSource = data.paid_by_partner_source
+  if (finalPaidBy === 'partner') {
     const capitalFields: Record<string, unknown> = {
       amount_paisa:     data.amount_paisa,
       transaction_date: data.expense_date,
-      notes:            newCapitalNotes,
+      notes:            `Paid expense: ${data.description.trim()}`,
       updated_at:       new Date().toISOString(),
     }
 
-    if (partnerSource === 'partner') {
+    if (finalPartnerSource === 'partner') {
       capitalFields.partner_id         = null
-      capitalFields.partner_profile_id = data.paid_by_partner_id
+      capitalFields.partner_profile_id = finalPartnerId
     } else {
-      capitalFields.partner_id         = data.paid_by_partner_id
+      capitalFields.partner_id         = finalPartnerId
       capitalFields.partner_profile_id = null
     }
 
-    const { data: existingCapital } = await admin
-      .from('capital_transactions')
-      .select('id')
-      .eq('tenant_id', writeTenantId)
-      .eq('notes', oldCapitalNotes)
-      .maybeSingle()
-
-    if (existingCapital) {
-      const { error: capitalError } = await admin
+    if (linkedCapital?.length) {
+      const { data: updatedCapital, error: capitalError } = await admin
         .from('capital_transactions')
         .update(capitalFields)
-        .eq('id', existingCapital.id)
+        .eq('id', linkedCapital[0].id)
+        .eq('tenant_id', writeTenantId)
+        .eq('reference', stableReference)
+        .select('id')
 
-      if (capitalError) {
-        return NextResponse.json(
-          { error: `Expense saved but capital update failed: ${capitalError.message}` },
-          { status: 500 },
-        )
+      if (capitalError || updatedCapital?.length !== 1) {
+        return capitalSyncFailure('update', writeTenantId, id, capitalError ?? 'Expected one updated row')
       }
     } else {
       const { error: capitalError } = await admin
@@ -216,17 +318,26 @@ export async function PATCH(
         .insert({
           tenant_id:  writeTenantId,
           type:       'contribution',
-          reference:  null,
+          reference:  stableReference,
           created_by: user?.id || null,
           ...capitalFields,
         })
 
       if (capitalError) {
-        return NextResponse.json(
-          { error: `Expense saved but capital entry failed: ${capitalError.message}` },
-          { status: 500 },
-        )
+        return capitalSyncFailure('insert', writeTenantId, id, capitalError)
       }
+    }
+  } else if (linkedCapital?.length) {
+    const { data: deletedCapital, error: capitalError } = await admin
+      .from('capital_transactions')
+      .delete()
+      .eq('id', linkedCapital[0].id)
+      .eq('tenant_id', writeTenantId)
+      .eq('reference', stableReference)
+      .select('id')
+
+    if (capitalError || deletedCapital?.length !== 1) {
+      return capitalSyncFailure('delete', writeTenantId, id, capitalError ?? 'Expected one deleted row')
     }
   }
 
@@ -245,17 +356,114 @@ export async function DELETE(
   const writeTenantId = requireWriteTenantId(tenantId, request)
   if (writeTenantId instanceof NextResponse) return writeTenantId
 
+  if (!getDefaultPermissions(auth.ctx.isSuperAdmin ? 'super_admin' : auth.ctx.role ?? 'staff').canDeleteRecords) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { id } = await params
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data: existing, error: fetchError } = await supabase
+    .from('expenses')
+    .select('id, paid_by')
+    .eq('id', id)
+    .eq('tenant_id', writeTenantId)
+    .single()
+
+  if (fetchError || !existing) {
+    const status = fetchError && fetchError.code !== 'PGRST116' ? 500 : 404
+    return NextResponse.json(
+      { error: status === 404 ? 'Expense not found' : fetchError?.message },
+      { status },
+    )
+  }
+
+  const stableReference = `expense:${id}`
+  const admin = createAdminClient()
+  const { data: linkedCapital, error: capitalLookupError } = await admin
+    .from('capital_transactions')
+    .select('id, type')
+    .eq('tenant_id', writeTenantId)
+    .eq('reference', stableReference)
+    .limit(2)
+
+  if (capitalLookupError) {
+    console.error('Expense capital lookup failed before deletion', {
+      tenant_id: writeTenantId,
+      expense_id: id,
+      error: capitalLookupError,
+    })
+    return NextResponse.json({ error: 'Could not verify expense capital link' }, { status: 500 })
+  }
+  if ((linkedCapital?.length ?? 0) > 1) {
+    return NextResponse.json(
+      { error: 'Multiple capital records are linked to this expense. Reconciliation is required.' },
+      { status: 409 },
+    )
+  }
+  if (linkedCapital?.length === 1 && linkedCapital[0].type !== 'contribution') {
+    return NextResponse.json(
+      { error: 'The linked capital record is not a contribution. Reconciliation is required.' },
+      { status: 409 },
+    )
+  }
+  if (existing.paid_by === 'partner' && !linkedCapital?.length) {
+    return NextResponse.json(
+      { error: 'This partner-paid expense has legacy capital data that must be reconciled before deleting.' },
+      { status: 409 },
+    )
+  }
+
+  let capitalDeleted = false
+  if (linkedCapital?.length) {
+    const { data: deletedCapital, error: capitalError } = await admin
+      .from('capital_transactions')
+      .delete()
+      .eq('id', linkedCapital[0].id)
+      .eq('tenant_id', writeTenantId)
+      .eq('reference', stableReference)
+      .select('id')
+
+    if (capitalError || deletedCapital?.length !== 1) {
+      console.error('Expense capital deletion failed', {
+        tenant_id: writeTenantId,
+        expense_id: id,
+        capital_id: linkedCapital[0].id,
+        error: capitalError ?? 'Expected one deleted row',
+      })
+      return NextResponse.json(
+        { error: 'Capital deletion failed; expense was not deleted', expense_id: id },
+        { status: 500 },
+      )
+    }
+    capitalDeleted = true
+  }
+
+  const { data: deletedExpense, error } = await supabase
     .from('expenses')
     .delete()
     .eq('id', id)
     .eq('tenant_id', writeTenantId)
+    .select('id')
+    .single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error || !deletedExpense) {
+    console.error('Expense deletion failed after capital phase', {
+      tenant_id: writeTenantId,
+      expense_id: id,
+      capital_deleted: capitalDeleted,
+      error: error ?? 'Expense delete returned no row',
+    })
+    return NextResponse.json(
+      {
+        error: capitalDeleted
+          ? 'Capital entry deleted but expense deletion failed; manual reconciliation is required'
+          : 'Expense deletion failed',
+        expense_id: id,
+        partial_failure: capitalDeleted,
+      },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({ success: true })
