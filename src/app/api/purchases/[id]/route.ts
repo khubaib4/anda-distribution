@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { validatePurchaseEditStockAvailability } from '@/lib/stock-availability'
 
 const PURCHASE_SELECT = `
   *,
@@ -88,23 +89,6 @@ export async function PATCH(
     paid_by_partner_source,
   } = body
 
-  if (items !== undefined) {
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one item is required' },
-        { status: 400 },
-      )
-    }
-    for (const item of items) {
-      if (!item.egg_category_id || !item.quantity_trays || !item.price_per_tray_paisa) {
-        return NextResponse.json(
-          { error: 'Each item needs category, quantity, and price' },
-          { status: 400 },
-        )
-      }
-    }
-  }
-
   const { data: existing, error: fetchError } = await supabase
     .from('purchases')
     .select(`
@@ -121,6 +105,55 @@ export async function PATCH(
 
   if (fetchError || !existing) {
     return NextResponse.json({ error: 'Purchase not found' }, { status: 404 })
+  }
+
+  if (items !== undefined) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one item is required' },
+        { status: 400 },
+      )
+    }
+
+    for (const item of items) {
+      if (
+        typeof item.price_per_tray_paisa !== 'number' ||
+        !Number.isFinite(item.price_per_tray_paisa) ||
+        item.price_per_tray_paisa <= 0
+      ) {
+        return NextResponse.json(
+          { error: 'Each item needs category, quantity, and price' },
+          { status: 400 },
+        )
+      }
+    }
+
+    const stockAvailability = await validatePurchaseEditStockAvailability({
+      supabase,
+      tenantId: writeTenantId,
+      purchaseId: id,
+      items,
+    })
+
+    if (stockAvailability.invalidItems.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Invalid purchase stock request',
+          invalid_items: stockAvailability.invalidItems,
+        },
+        { status: 400 },
+      )
+    }
+
+    if (!stockAvailability.ok) {
+      return NextResponse.json(
+        {
+          error: 'Insufficient stock',
+          insufficient_stock: stockAvailability.insufficientStock,
+        },
+        { status: 409 },
+      )
+    }
   }
 
   const updates: Record<string, unknown> = {

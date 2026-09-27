@@ -7,6 +7,11 @@ type SaleStockItem = {
   quantity_trays: number
 }
 
+type PurchaseStockItem = {
+  egg_category_id: string
+  quantity_trays: number
+}
+
 type StockMovementRow = {
   egg_category_id: string
   movement_type: string
@@ -46,6 +51,21 @@ export type OutboundStockAvailabilityResult = {
   ok: boolean
   invalidReason?: string
   insufficientStock?: InsufficientOutboundStockItem
+}
+
+export type InsufficientPurchaseEditStockItem = {
+  egg_category_id: string
+  current_available_trays: number
+  old_purchase_trays: number
+  new_purchase_trays: number
+  projected_available_trays: number
+  shortage_trays: number
+}
+
+export type PurchaseEditStockAvailabilityResult = {
+  ok: boolean
+  invalidItems: InvalidStockItem[]
+  insufficientStock: InsufficientPurchaseEditStockItem[]
 }
 
 function isInbound(movementType: string): boolean {
@@ -281,4 +301,149 @@ export async function validateOutboundStockAvailability({
   }
 
   return { ok: true }
+}
+
+export async function validatePurchaseEditStockAvailability({
+  supabase,
+  tenantId,
+  purchaseId,
+  items,
+}: {
+  supabase: SupabaseClient
+  tenantId: string
+  purchaseId: string
+  items: PurchaseStockItem[]
+}): Promise<PurchaseEditStockAvailabilityResult> {
+  const invalidItems: InvalidStockItem[] = []
+  const newPurchaseEggsByCategory = new Map<string, number>()
+
+  for (const item of items) {
+    if (!item.egg_category_id) {
+      invalidItems.push({ reason: 'Egg category is required' })
+      continue
+    }
+
+    if (
+      typeof item.quantity_trays !== 'number' ||
+      !Number.isFinite(item.quantity_trays) ||
+      item.quantity_trays <= 0
+    ) {
+      invalidItems.push({
+        egg_category_id: item.egg_category_id,
+        reason: 'Quantity must be greater than 0',
+      })
+      continue
+    }
+
+    addToMap(
+      newPurchaseEggsByCategory,
+      item.egg_category_id,
+      item.quantity_trays * 30,
+    )
+  }
+
+  const newCategoryIds = [...newPurchaseEggsByCategory.keys()]
+
+  if (newCategoryIds.length === 0) {
+    return { ok: false, invalidItems, insufficientStock: [] }
+  }
+
+  const { data: categories, error: categoryError } = await supabase
+    .from('egg_categories')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('id', newCategoryIds)
+
+  if (categoryError) throw categoryError
+
+  const validCategoryIds = new Set(
+    ((categories ?? []) as { id: string }[]).map(category => category.id),
+  )
+
+  for (const categoryId of newCategoryIds) {
+    if (!validCategoryIds.has(categoryId)) {
+      invalidItems.push({
+        egg_category_id: categoryId,
+        reason: 'Egg category does not belong to this tenant',
+      })
+    }
+  }
+
+  if (invalidItems.length > 0) {
+    return { ok: false, invalidItems, insufficientStock: [] }
+  }
+
+  const { data: oldPurchaseMovements, error: oldMovementsError } =
+    await supabase
+      .from('stock_movements')
+      .select('egg_category_id, movement_type, quantity_trays, quantity_eggs')
+      .eq('tenant_id', tenantId)
+      .eq('reference_id', purchaseId)
+      .eq('movement_type', 'purchase_in')
+
+  if (oldMovementsError) throw oldMovementsError
+
+  const oldPurchaseEggsByCategory = new Map<string, number>()
+
+  for (const movement of (oldPurchaseMovements ?? []) as StockMovementRow[]) {
+    addToMap(
+      oldPurchaseEggsByCategory,
+      movement.egg_category_id,
+      movementEggs(movement),
+    )
+  }
+
+  const affectedCategoryIds = [
+    ...new Set([
+      ...newPurchaseEggsByCategory.keys(),
+      ...oldPurchaseEggsByCategory.keys(),
+    ]),
+  ]
+
+  const { data: movements, error: movementsError } = await supabase
+    .from('stock_movements')
+    .select('egg_category_id, movement_type, quantity_trays, quantity_eggs')
+    .eq('tenant_id', tenantId)
+    .in('egg_category_id', affectedCategoryIds)
+
+  if (movementsError) throw movementsError
+
+  const currentAvailableEggsByCategory = new Map<string, number>()
+
+  for (const movement of (movements ?? []) as StockMovementRow[]) {
+    const eggs = movementEggs(movement)
+    addToMap(
+      currentAvailableEggsByCategory,
+      movement.egg_category_id,
+      isInbound(movement.movement_type) ? eggs : -eggs,
+    )
+  }
+
+  const insufficientStock: InsufficientPurchaseEditStockItem[] = []
+
+  for (const categoryId of affectedCategoryIds) {
+    const currentAvailableEggs =
+      currentAvailableEggsByCategory.get(categoryId) ?? 0
+    const oldPurchaseEggs = oldPurchaseEggsByCategory.get(categoryId) ?? 0
+    const newPurchaseEggs = newPurchaseEggsByCategory.get(categoryId) ?? 0
+    const projectedAvailableEggs =
+      currentAvailableEggs - oldPurchaseEggs + newPurchaseEggs
+
+    if (projectedAvailableEggs < 0) {
+      insufficientStock.push({
+        egg_category_id: categoryId,
+        current_available_trays: roundTrays(currentAvailableEggs / 30),
+        old_purchase_trays: roundTrays(oldPurchaseEggs / 30),
+        new_purchase_trays: roundTrays(newPurchaseEggs / 30),
+        projected_available_trays: roundTrays(projectedAvailableEggs / 30),
+        shortage_trays: roundTrays(-projectedAvailableEggs / 30),
+      })
+    }
+  }
+
+  return {
+    ok: insufficientStock.length === 0,
+    invalidItems: [],
+    insufficientStock,
+  }
 }
