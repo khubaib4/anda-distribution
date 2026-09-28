@@ -161,7 +161,7 @@ export default function EditPurchasePage() {
         })),
       }
 
-      const res = await fetch(`/api/purchases/${purchaseId}`, {
+      const res = await tenantFetch(`/api/purchases/${purchaseId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),

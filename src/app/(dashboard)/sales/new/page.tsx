@@ -217,7 +217,7 @@ export default function NewSalePage() {
         }
       }
 
-      const res = await fetch('/api/sales', {
+      const res = await tenantFetch('/api/sales', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),

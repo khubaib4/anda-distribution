@@ -10,6 +10,7 @@ import PurchaseItemRow, {
   type PurchaseItemDraft,
 } from '@/components/purchases/purchase-item-row'
 import { todayString, formatPKR } from '@/lib/utils'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): PurchaseItemDraft {
   return {
@@ -23,6 +24,7 @@ function newItem(): PurchaseItemDraft {
 
 export default function NewPurchasePage() {
   const router = useRouter()
+  const tenantFetch = useTenantFetch()
   const { suppliers } = useSuppliers()
   const { categories } = useEggCategories()
 
@@ -105,7 +107,7 @@ export default function NewPurchasePage() {
         })),
       }
 
-      const res = await fetch('/api/purchases', {
+      const res = await tenantFetch('/api/purchases', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),

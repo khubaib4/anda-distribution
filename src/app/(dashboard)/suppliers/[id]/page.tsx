@@ -107,7 +107,7 @@ export default function SupplierDetailPage({
 
     setPaying(true)
     try {
-      const res = await window.fetch('/api/supplier-payments', {
+      const res = await tenantFetch('/api/supplier-payments', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

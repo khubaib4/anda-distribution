@@ -125,7 +125,7 @@ export default function CustomerDetailPage({
 
     setPaying(true)
     try {
-      const res = await fetch('/api/payments', {
+      const res = await tenantFetch('/api/payments', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

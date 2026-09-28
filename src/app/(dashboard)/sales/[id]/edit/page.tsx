@@ -284,7 +284,7 @@ export default function EditSalePage() {
         })),
       }
 
-      const res = await fetch(`/api/sales/${saleId}`, {
+      const res = await tenantFetch(`/api/sales/${saleId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
