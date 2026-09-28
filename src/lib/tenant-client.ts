@@ -8,6 +8,7 @@ export type { Permissions }
 export interface TenantContext {
   userId:       string
   tenantId:     string | null
+  selectedTenantId: string | null
   tenantName:   string | null
   logoUrl:      string | null
   role:         'owner' | 'staff' | 'super_admin'
@@ -27,18 +28,36 @@ export function useTenant(): TenantContext {
 
 export type TenantContextResponse = Omit<TenantContext, 'permissions'>
 
-export async function fetchTenantContext(): Promise<{
-  data:  TenantContextResponse | null
-  status: number
+export type TenantSelectionErrorCode =
+  | 'TENANT_SELECTION_INVALID'
+  | 'TENANT_NOT_FOUND'
+  | 'TENANT_VALIDATION_FAILED'
+
+export async function fetchTenantContext(
+  selectedTenantId: string | null,
+  signal?: AbortSignal,
+): Promise<{
+  data:      TenantContextResponse | null
+  status:    number
+  errorCode: TenantSelectionErrorCode | null
 }> {
   try {
-    const res = await window.fetch('/api/me')
+    const url = selectedTenantId === null
+      ? '/api/me'
+      : `/api/me?${new URLSearchParams({ tenant_id: selectedTenantId })}`
+    const res = await window.fetch(url, { signal })
     if (!res.ok) {
-      return { data: null, status: res.status }
+      const body = await res.json().catch(() => null) as { code?: string } | null
+      const code = body?.code
+      const errorCode = code === 'TENANT_SELECTION_INVALID' ||
+        code === 'TENANT_NOT_FOUND' || code === 'TENANT_VALIDATION_FAILED'
+        ? code
+        : null
+      return { data: null, status: res.status, errorCode }
     }
-    const data = await res.json()
-    return { data, status: res.status }
+    const data = await res.json() as TenantContextResponse
+    return { data, status: res.status, errorCode: null }
   } catch {
-    return { data: null, status: 0 }
+    return { data: null, status: 0, errorCode: null }
   }
 }
