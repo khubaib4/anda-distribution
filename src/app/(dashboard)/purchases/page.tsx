@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useRouter } from 'next/navigation'
 import { Plus, ChevronDown, Pencil } from 'lucide-react'
 import { usePurchases } from '@/hooks/use-purchases'
@@ -62,11 +62,11 @@ export default function PurchasesPage() {
             {loading ? '…' : `${purchases.length} purchase${purchases.length !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <Link href="/purchases/new" className="btn-primary">
+        <TenantLink href="/purchases/new" className="btn-primary">
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">New purchase</span>
           <span className="sm:hidden">New</span>
-        </Link>
+        </TenantLink>
       </div>
 
       {/* Summary cards */}
@@ -187,10 +187,10 @@ export default function PurchasesPage() {
                 : 'No purchases yet — record your first one'}
             </p>
             {!hasFilters && (
-              <Link href="/purchases/new" className="btn-primary mt-4">
+              <TenantLink href="/purchases/new" className="btn-primary mt-4">
                 <Plus className="w-4 h-4" />
                 New purchase
-              </Link>
+              </TenantLink>
             )}
           </div>
         </div>

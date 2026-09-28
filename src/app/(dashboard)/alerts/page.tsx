@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { Phone, ChevronRight } from 'lucide-react'
 import { formatPKR } from '@/lib/utils'
 import type { OverdueSale } from '@/types'
@@ -31,13 +31,13 @@ function AlertCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <Link
+            <TenantLink
               href={`/customers/${sale.customer_id}`}
               className="font-medium text-stone-900 text-sm
                          hover:text-brand-600 transition-colors"
             >
               {sale.contact_name}
-            </Link>
+            </TenantLink>
             <span className={`badge ${badgeClass}`}>{badge}</span>
           </div>
           {sale.business_name && (
@@ -58,13 +58,13 @@ function AlertCard({
             {formatPKR(sale.balance_paisa)}
           </p>
           <p className="text-2xs text-stone-400">owed</p>
-          <Link
+          <TenantLink
             href={`/customers/${sale.customer_id}`}
             className="inline-flex items-center gap-0.5 text-xs
                        text-brand-600 hover:text-brand-700 mt-1"
           >
             Ledger <ChevronRight className="w-3 h-3" />
-          </Link>
+          </TenantLink>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import { useCurrentStock } from '@/hooks/use-stock'
@@ -310,14 +310,14 @@ export default function EditSalePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/sales"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Sales
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit sale</h1>
         </div>
         <SkeletonList count={4} />
@@ -329,14 +329,14 @@ export default function EditSalePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/sales"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Sales
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit sale</h1>
         </div>
         <div className="text-sm text-danger bg-red-50 border border-red-200
@@ -350,14 +350,14 @@ export default function EditSalePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/sales"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Sales
-        </Link>
+        </TenantLink>
         <h1 className="page-title">Edit sale</h1>
         {invoiceNumber && (
           <p className="page-subtitle font-mono">{invoiceNumber}</p>
@@ -670,9 +670,9 @@ export default function EditSalePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link href="/sales" className="btn-secondary flex-1 justify-center">
+          <TenantLink href="/sales" className="btn-secondary flex-1 justify-center">
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

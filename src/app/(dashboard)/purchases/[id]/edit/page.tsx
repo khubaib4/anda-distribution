@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import PurchaseItemRow, {
@@ -186,14 +186,14 @@ export default function EditPurchasePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/purchases"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Purchases
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit purchase</h1>
         </div>
         <SkeletonList count={4} />
@@ -205,14 +205,14 @@ export default function EditPurchasePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/purchases"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Purchases
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit purchase</h1>
         </div>
         <div className="text-sm text-danger bg-red-50 border border-red-200
@@ -226,14 +226,14 @@ export default function EditPurchasePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/purchases"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Purchases
-        </Link>
+        </TenantLink>
         <h1 className="page-title">Edit purchase</h1>
         {invoiceNumber && (
           <p className="page-subtitle font-mono">{invoiceNumber}</p>
@@ -360,9 +360,9 @@ export default function EditPurchasePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link href="/purchases" className="btn-secondary flex-1 justify-center">
+          <TenantLink href="/purchases" className="btn-secondary flex-1 justify-center">
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

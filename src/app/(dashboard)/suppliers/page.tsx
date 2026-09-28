@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Plus, Pencil, Phone, PowerOff, Power, ChevronRight } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
 import SupplierModal from '@/components/suppliers/supplier-modal'
 import { formatPKR } from '@/lib/utils'
@@ -140,13 +140,13 @@ export default function SuppliersPage() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Link
+                  <TenantLink
                     href={`/suppliers/${supplier.supplier_id}`}
                     className="font-medium text-stone-900 text-sm
                                hover:text-brand-600 truncate transition-colors"
                   >
                     {supplier.name}
-                  </Link>
+                  </TenantLink>
                   {!supplier.is_active && (
                     <span className="badge badge-unpaid flex-shrink-0">
                       Inactive
@@ -205,13 +205,13 @@ export default function SuppliersPage() {
                   }
                 </button>
 
-                <Link
+                <TenantLink
                   href={`/suppliers/${supplier.supplier_id}`}
                   className="btn-ghost p-1.5"
                   aria-label="View ledger"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+                </TenantLink>
               </div>
             </div>
           ))}

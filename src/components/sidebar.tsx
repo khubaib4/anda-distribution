@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
@@ -17,6 +18,7 @@ import {
   Landmark,
   BarChart3,
   Settings,
+  ArrowLeft,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -121,7 +123,7 @@ export default function Sidebar() {
 
           const active = isActive(pathname, href)
           return (
-            <Link
+            <TenantLink
               key={href}
               href={href}
               className={[
@@ -140,11 +142,11 @@ export default function Sidebar() {
                 )}
               </span>
               {label}
-            </Link>
+            </TenantLink>
           )
         })}
         {tenant.permissions.canViewSettings && (
-          <Link
+          <TenantLink
             href="/settings"
             className={[
               'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium',
@@ -156,6 +158,17 @@ export default function Sidebar() {
           >
             <Settings className="w-4 h-4 flex-shrink-0" />
             Settings
+          </TenantLink>
+        )}
+        {tenant.isSuperAdmin && tenant.selectedTenantId && (
+          <Link
+            href="/admin/tenants"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
+                       text-stone-400 hover:text-white hover:bg-stone-800
+                       transition-colors duration-150"
+          >
+            <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+            Exit tenant view
           </Link>
         )}
       </nav>

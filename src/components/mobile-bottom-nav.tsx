@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -32,7 +32,7 @@ export default function MobileBottomNav() {
       {tabs.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href)
         return (
-          <Link
+          <TenantLink
             key={href}
             href={href}
             className={[
@@ -48,7 +48,7 @@ export default function MobileBottomNav() {
               ].join(' ')}
             />
             {label}
-          </Link>
+          </TenantLink>
         )
       })}
     </nav>

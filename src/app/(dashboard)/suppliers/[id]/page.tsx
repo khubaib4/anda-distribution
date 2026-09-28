@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
   Phone,
@@ -151,14 +151,14 @@ export default function SupplierDetailPage({
 
       {/* Back */}
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/suppliers"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Suppliers
-        </Link>
+        </TenantLink>
 
         {loadingCust ? (
           <div className="h-8 bg-stone-100 rounded w-48 animate-pulse" />
@@ -356,10 +356,10 @@ export default function SupplierDetailPage({
             <p className="text-stone-400 text-sm">
               No transactions yet for this supplier
             </p>
-            <Link href="/purchases/new" className="btn-primary mt-4 inline-flex">
+            <TenantLink href="/purchases/new" className="btn-primary mt-4 inline-flex">
               <Plus className="w-4 h-4" />
               Record a purchase
-            </Link>
+            </TenantLink>
           </div>
         )}
 

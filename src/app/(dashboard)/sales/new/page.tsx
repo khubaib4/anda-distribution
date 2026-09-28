@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import { useCurrentStock } from '@/hooks/use-stock'
@@ -243,14 +243,14 @@ export default function NewSalePage() {
     <div className="max-w-2xl mx-auto">
 
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/sales"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Sales
-        </Link>
+        </TenantLink>
         <h1 className="page-title">New sale</h1>
         <p className="page-subtitle">
           Invoice number will be auto-generated on save
@@ -604,12 +604,12 @@ export default function NewSalePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link
+          <TenantLink
             href="/sales"
             className="btn-secondary flex-1 justify-center"
           >
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

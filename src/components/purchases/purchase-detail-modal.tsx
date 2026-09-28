@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { X, Pencil } from 'lucide-react'
 import {
   formatPKR,
@@ -199,9 +199,9 @@ export default function PurchaseDetailModal({
                     will update automatically once supplier allocation is enabled.
                   </p>
                   {purchase.supplier_id && (
-                    <Link href={`/suppliers/${purchase.supplier_id}`} className="text-sm text-brand-600 hover:underline">
+                    <TenantLink href={`/suppliers/${purchase.supplier_id}`} className="text-sm text-brand-600 hover:underline">
                       Open supplier profile
-                    </Link>
+                    </TenantLink>
                   )}
                 </div>
               </div>

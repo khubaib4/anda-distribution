@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
   TrendingUp,
@@ -87,14 +87,14 @@ export default function AccountDetailPage({
     <div className="max-w-2xl mx-auto">
 
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/accounts"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Accounts
-        </Link>
+        </TenantLink>
 
         {loadingAccount ? (
           <div className="h-8 bg-stone-100 rounded w-48 animate-pulse" />

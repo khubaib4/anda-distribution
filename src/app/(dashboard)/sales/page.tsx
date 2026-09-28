@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useRouter } from 'next/navigation'
 import { Plus, ChevronDown, Pencil } from 'lucide-react'
 import { useSales } from '@/hooks/use-sales'
@@ -63,11 +63,11 @@ export default function SalesPage() {
               : `${sales.length} sale${sales.length !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <Link href="/sales/new" className="btn-primary">
+        <TenantLink href="/sales/new" className="btn-primary">
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">New sale</span>
           <span className="sm:hidden">New</span>
-        </Link>
+        </TenantLink>
       </div>
 
       {/* Summary cards */}
@@ -187,10 +187,10 @@ export default function SalesPage() {
                 : 'No sales yet — record your first one'}
             </p>
             {!hasFilters && (
-              <Link href="/sales/new" className="btn-primary mt-4">
+              <TenantLink href="/sales/new" className="btn-primary mt-4">
                 <Plus className="w-4 h-4" />
                 New sale
-              </Link>
+              </TenantLink>
             )}
           </div>
         </div>

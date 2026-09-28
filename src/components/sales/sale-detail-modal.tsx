@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Download, Pencil } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   formatPKR,
   formatDate,
@@ -119,14 +119,14 @@ export default function SaleDetailModal({
                                 tracking-wider mb-0.5">
                     Customer
                   </p>
-                  <Link
+                  <TenantLink
                     href={`/customers/${sale.customer_id}`}
                     onClick={onClose}
                     className="text-sm font-medium text-brand-600
                                hover:text-brand-700"
                   >
                     {sale.customer?.contact_name ?? '—'}
-                  </Link>
+                  </TenantLink>
                   {sale.customer?.business_name && (
                     <p className="text-xs text-stone-500">
                       {sale.customer.business_name}
@@ -284,13 +284,13 @@ export default function SaleDetailModal({
                   Record customer payments from the customer profile. Invoice
                   status updates automatically using FIFO.
                 </p>
-                <Link
+                <TenantLink
                   href={`/customers/${sale.customer_id}`}
                   onClick={onClose}
                   className="btn-secondary mt-3 inline-flex text-xs"
                 >
                   Go to customer profile
-                </Link>
+                </TenantLink>
               </div>
 
               {sale.notes && (
