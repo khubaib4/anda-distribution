@@ -20,7 +20,8 @@ import {
   effectiveItemLineTotalPaisa,
   computeDiscountAmountPaisa,
 } from '@/lib/utils'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
+import { useTenant } from '@/lib/tenant-client'
 import type { PartnerOption, Sale } from '@/types'
 
 function newItem(): SaleItemDraft {
@@ -53,6 +54,7 @@ function saleToItems(sale: Sale): SaleItemDraft[] {
 
 export default function EditSalePage() {
   const router = useRouter()
+  const { userId, tenantId } = useTenant()
   const params = useParams()
   const saleId = params.id as string
 
@@ -205,6 +207,7 @@ export default function EditSalePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const mutationScope = createCacheScope(userId, tenantId)
     setError(null)
 
     if (!customerId) {
@@ -290,7 +293,7 @@ export default function EditSalePage() {
         return
       }
 
-      cache.invalidatePattern('/api/sales')
+      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
       router.push('/sales')
     } catch {
       setError('Network error — please try again')

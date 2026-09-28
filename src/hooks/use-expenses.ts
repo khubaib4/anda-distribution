@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { Expense, ExpenseCategory } from '@/types'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
@@ -14,6 +15,7 @@ interface Filters {
 }
 
 export function useExpenses(filters: Filters = {}) {
+  const { userId, tenantId } = useTenant()
   const url = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.category_id) params.set('category_id', filters.category_id)
@@ -45,6 +47,7 @@ export function useExpenses(filters: Filters = {}) {
   }
 
   async function createExpense(payload: ExpensePayload) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch('/api/expenses', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,12 +55,13 @@ export function useExpenses(filters: Filters = {}) {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to create expense')
-    cache.invalidatePattern('/api/expenses')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/expenses')
     await refetch()
     return result as Expense
   }
 
   async function updateExpense(id: string, payload: ExpensePayload) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch(`/api/expenses/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -65,18 +69,19 @@ export function useExpenses(filters: Filters = {}) {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to update expense')
-    cache.invalidatePattern('/api/expenses')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/expenses')
     await refetch()
     return result as Expense
   }
 
   async function deleteExpense(id: string) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch(`/api/expenses/${id}`, {
       method: 'DELETE',
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to delete expense')
-    cache.invalidatePattern('/api/expenses')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/expenses')
     await refetch()
   }
 

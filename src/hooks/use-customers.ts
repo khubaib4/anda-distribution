@@ -2,8 +2,9 @@
 
 import { useMemo } from 'react'
 import type { CustomerBalance } from '@/types'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
@@ -13,6 +14,7 @@ interface Filters {
 }
 
 export function useCustomers(filters: Filters = {}) {
+  const { userId, tenantId } = useTenant()
   const url = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.type)     params.set('type',     filters.type)
@@ -34,6 +36,7 @@ export function useCustomers(filters: Filters = {}) {
     customer_type?: string
     notes?:         string
   }) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch('/api/customers', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,7 +44,7 @@ export function useCustomers(filters: Filters = {}) {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to create customer')
-    cache.invalidatePattern('/api/customers')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/customers')
     await refetch()
     return result
   }
@@ -58,6 +61,7 @@ export function useCustomers(filters: Filters = {}) {
       is_active:     boolean
     }>,
   ) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch(`/api/customers/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -65,7 +69,7 @@ export function useCustomers(filters: Filters = {}) {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to update customer')
-    cache.invalidatePattern('/api/customers')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/customers')
     await refetch()
     return result
   }

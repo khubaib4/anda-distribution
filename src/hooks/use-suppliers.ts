@@ -1,12 +1,14 @@
 'use client'
 
 import type { SupplierBalance } from '@/types'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
 export function useSuppliers() {
+  const { userId, tenantId } = useTenant()
   const { data, loading, error, refetch } = useCachedFetch<SupplierBalance[]>(
     '/api/suppliers',
     { ttl: LIST_TTL },
@@ -18,6 +20,7 @@ export function useSuppliers() {
     address?: string
     notes?:   string
   }) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch('/api/suppliers', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,7 +28,7 @@ export function useSuppliers() {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to create supplier')
-    cache.invalidatePattern('/api/suppliers')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/suppliers')
     await refetch()
     return result
   }
@@ -40,6 +43,7 @@ export function useSuppliers() {
       is_active: boolean
     }>,
   ) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch(`/api/suppliers/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -47,7 +51,7 @@ export function useSuppliers() {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to update supplier')
-    cache.invalidatePattern('/api/suppliers')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/suppliers')
     await refetch()
     return result
   }

@@ -1,42 +1,98 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { cache } from '@/lib/cache'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { cache, createCacheScope } from '@/lib/cache'
+import { useTenant } from '@/lib/tenant-client'
 
 interface Options {
   ttl?:     number
   enabled?: boolean
 }
 
+interface RequestState<T> {
+  requestKey: string | null
+  data:       T | undefined
+  loading:    boolean
+  error:      string | null
+}
+
 export function useCachedFetch<T>(url: string | null, options?: Options) {
   const ttl     = options?.ttl ?? 30000
   const enabled = options?.enabled ?? true
+  const { userId, tenantId } = useTenant()
+  const scope = useMemo(
+    () => createCacheScope(userId, tenantId),
+    [userId, tenantId],
+  )
+  const requestKey = scope && url && enabled
+    ? JSON.stringify([scope.userId, scope.tenantId, url])
+    : null
+  const missingScopeError = enabled && url && !scope ? 'Tenant unavailable' : null
 
-  const [data, setData]       = useState<T | undefined>(undefined)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
-  const dataRef               = useRef<T | undefined>(undefined)
+  const [state, setState] = useState<RequestState<T>>(() => {
+    const cached = scope && requestKey && url
+      ? cache.get(scope, url) as T | undefined
+      : undefined
+    return {
+      requestKey,
+      data:    cached,
+      loading: requestKey !== null && cached === undefined,
+      error:   missingScopeError,
+    }
+  })
+  const currentRequestKey = useRef(requestKey)
+  const generation = useRef(0)
+  const controllerRef = useRef<AbortController | null>(null)
+  const activeRef = useRef(false)
+
+  // The state tag masks old data during render. The layout effect rejects old
+  // responses as soon as a different request commits, before passive cleanup.
+  useLayoutEffect(() => {
+    currentRequestKey.current = requestKey
+  }, [requestKey])
+
+  const cancelRequest = useCallback(() => {
+    generation.current++
+    controllerRef.current?.abort()
+    controllerRef.current = null
+  }, [])
 
   const load = useCallback(async (force = false) => {
-    if (!url || !enabled) return
+    if (!scope || !url || !requestKey ||
+        !activeRef.current || currentRequestKey.current !== requestKey) return
+
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    const requestGeneration = ++generation.current
+    const isCurrent = () =>
+      activeRef.current &&
+      !controller.signal.aborted &&
+      generation.current === requestGeneration &&
+      currentRequestKey.current === requestKey
 
     if (!force) {
-      const cached = cache.get(url)
-      if (cached !== undefined) {
-        setData(cached as T)
-        dataRef.current = cached as T
-        setLoading(false)
-      } else {
-        setLoading(true)
-      }
-    } else if (dataRef.current === undefined) {
-      setLoading(true)
+      const cached = cache.get(scope, url) as T | undefined
+      setState(previous => currentRequestKey.current === requestKey
+        ? {
+            requestKey,
+            data:    cached,
+            loading: cached === undefined,
+            error:   null,
+          }
+        : previous)
+    } else {
+      setState(previous => {
+        if (currentRequestKey.current !== requestKey) return previous
+        const data = previous.requestKey === requestKey
+          ? previous.data
+          : undefined
+        return { requestKey, data, loading: data === undefined, error: null }
+      })
     }
 
-    setError(null)
-
     try {
-      const res = await window.fetch(url)
+      const res = await window.fetch(url, { signal: controller.signal })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(
@@ -44,45 +100,52 @@ export function useCachedFetch<T>(url: string | null, options?: Options) {
         )
       }
       const fresh = (await res.json()) as T
-      cache.set(url, fresh, ttl)
-      setData(fresh)
-      dataRef.current = fresh
+      if (!isCurrent()) return
+      cache.set(scope, url, fresh, ttl)
+      setState({ requestKey, data: fresh, loading: false, error: null })
     } catch (e) {
+      if (!isCurrent()) return
       const message = e instanceof Error ? e.message : 'Unknown error'
-      if (!force && cache.get(url) !== undefined) return
-      if (dataRef.current === undefined) {
-        setError(message)
-      }
+      setState(previous => {
+        if (currentRequestKey.current !== requestKey) return previous
+        const data = previous.requestKey === requestKey
+          ? previous.data
+          : undefined
+        return {
+          requestKey,
+          data,
+          loading: false,
+          error:   data === undefined ? message : null,
+        }
+      })
     } finally {
-      setLoading(false)
+      if (controllerRef.current === controller) controllerRef.current = null
     }
-  }, [url, enabled, ttl])
+  }, [scope, url, requestKey, ttl])
 
   useEffect(() => {
-    if (!enabled || !url) {
-      setLoading(false)
-      setData(undefined)
-      dataRef.current = undefined
-      return
+    activeRef.current = true
+    if (requestKey) {
+      void load()
     }
 
-    const cached = cache.get(url)
-    if (cached !== undefined) {
-      setData(cached as T)
-      dataRef.current = cached as T
-      setLoading(false)
-    } else {
-      setData(undefined)
-      dataRef.current = undefined
-      setLoading(true)
+    return () => {
+      activeRef.current = false
+      cancelRequest()
     }
-
-    load()
-  }, [url, enabled, load])
+  }, [requestKey, load, cancelRequest])
 
   const refetch = useCallback(async () => {
     await load(true)
   }, [load])
 
-  return { data, loading, error, refetch }
+  const visible = requestKey && state.requestKey === requestKey
+    ? state
+    : {
+        data:    undefined,
+        loading: requestKey !== null,
+        error:   missingScopeError,
+      }
+
+  return { data: visible.data, loading: visible.loading, error: visible.error, refetch }
 }

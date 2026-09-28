@@ -1,12 +1,14 @@
 'use client'
 
 import type { BankAccountBalance } from '@/types'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
 export function useBankAccounts() {
+  const { userId, tenantId } = useTenant()
   const { data, loading, error, refetch } = useCachedFetch<BankAccountBalance[]>(
     '/api/accounts',
     { ttl: LIST_TTL },
@@ -18,6 +20,7 @@ export function useBankAccounts() {
     account_number?: string
     nickname?:      string
   }) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch('/api/accounts', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,7 +28,7 @@ export function useBankAccounts() {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to create account')
-    cache.invalidatePattern('/api/accounts')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/accounts')
     await refetch()
     return result
   }
@@ -40,6 +43,7 @@ export function useBankAccounts() {
       is_active:      boolean
     }>,
   ) {
+    const mutationScope = createCacheScope(userId, tenantId)
     const res = await window.fetch(`/api/accounts/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -47,7 +51,7 @@ export function useBankAccounts() {
     })
     const result = await res.json()
     if (!res.ok) throw new Error(result.error ?? 'Failed to update account')
-    cache.invalidatePattern('/api/accounts')
+    if (mutationScope) cache.invalidatePattern(mutationScope, '/api/accounts')
     await refetch()
     return result
   }

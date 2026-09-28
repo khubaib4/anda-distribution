@@ -18,7 +18,8 @@ import {
   effectiveItemLineTotalPaisa,
   computeDiscountAmountPaisa,
 } from '@/lib/utils'
-import { cache } from '@/lib/cache'
+import { cache, createCacheScope } from '@/lib/cache'
+import { useTenant } from '@/lib/tenant-client'
 import type { BankAccountBalance } from '@/types'
 
 function accountLabel(account: BankAccountBalance): string {
@@ -41,6 +42,7 @@ function newItem(): SaleItemDraft {
 
 export default function NewSalePage() {
   const router = useRouter()
+  const { userId, tenantId } = useTenant()
   const { customers }  = useCustomers()
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
@@ -123,6 +125,7 @@ export default function NewSalePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const mutationScope = createCacheScope(userId, tenantId)
     setError(null)
 
     if (!customerId) {
@@ -223,7 +226,7 @@ export default function NewSalePage() {
         return
       }
 
-      cache.invalidatePattern('/api/sales')
+      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
       router.push('/sales')
     } catch {
       setError('Network error — please try again')
