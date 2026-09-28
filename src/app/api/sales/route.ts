@@ -7,7 +7,8 @@ import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
-  effectiveItemLineTotalPaisa,
+  validateSaleItems,
+  validateSaleDiscount,
 } from '@/lib/utils'
 
 export async function GET(request: Request) {
@@ -103,7 +104,6 @@ export async function POST(request: Request) {
     notes,
     discount_type,
     discount_value,
-    discount_amount_paisa,
     items,
   } = body
 
@@ -119,25 +119,29 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
-  if (!items || items.length === 0) {
-    return NextResponse.json(
-      { error: 'At least one item is required' },
-      { status: 400 }
-    )
+  const validatedItems = validateSaleItems(items)
+  if (!validatedItems.ok) {
+    return NextResponse.json({ error: validatedItems.error }, { status: 400 })
   }
-  for (const item of items) {
-    if (!item.egg_category_id || !item.quantity_trays || !item.price_per_tray_paisa) {
-      return NextResponse.json(
-        { error: 'Each item needs category, quantity, and price' },
-        { status: 400 }
-      )
-    }
+  const saleItems = validatedItems.items
+  const subtotalPaisa = computeSaleSubtotalPaisa(saleItems)
+  const saleDiscount = validateSaleDiscount(subtotalPaisa, discount_type, discount_value)
+  if (!saleDiscount.ok) {
+    return NextResponse.json({ error: saleDiscount.error }, { status: 400 })
+  }
+  const totalPaisa = subtotalPaisa - saleDiscount.discount_amount_paisa
+
+  if (totalPaisa === 0 && payment_status === 'partial') {
+    return NextResponse.json(
+      { error: 'A zero-total sale cannot have a partial payment' },
+      { status: 400 },
+    )
   }
 
   const stockAvailability = await validateSaleStockAvailability({
     supabase,
     tenantId: writeTenantId,
-    items,
+    items: saleItems,
   })
 
   if (stockAvailability.invalidItems.length > 0) {
@@ -160,7 +164,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const categoryIds = [...new Set(items.map((i: { egg_category_id: string }) =>
+  const categoryIds = [...new Set(saleItems.map((i: { egg_category_id: string }) =>
     i.egg_category_id
   ))]
 
@@ -211,10 +215,10 @@ export async function POST(request: Request) {
       notes:                 notes                 || null,
       payment_status:        payment_status        || 'unpaid',
       due_date:              due_date              || null,
-      amount_paid_paisa:     amount_paid_paisa     ?? 0,
-      discount_type:         discount_type         || null,
-      discount_value:        discount_value        ?? 0,
-      discount_amount_paisa: discount_amount_paisa ?? 0,
+      amount_paid_paisa:     totalPaisa === 0 ? 0 : (amount_paid_paisa ?? 0),
+      discount_type:         saleDiscount.discount_type,
+      discount_value:        saleDiscount.discount_value,
+      discount_amount_paisa: saleDiscount.discount_amount_paisa,
       created_by:            user?.id              || null,
     })
     .select()
@@ -227,22 +231,15 @@ export async function POST(request: Request) {
     )
   }
 
-  const itemRows = items.map((item: {
-    egg_category_id:        string
-    quantity_trays:         number
-    price_per_tray_paisa:   number
-    discount_type?:         'percentage' | 'fixed' | null
-    discount_value?:        number
-    discounted_price_paisa?: number
-  }) => ({
+  const itemRows = saleItems.map(item => ({
     tenant_id:              writeTenantId,
     sale_id:                sale.id,
     egg_category_id:        item.egg_category_id,
     quantity_trays:         item.quantity_trays,
     price_per_tray_paisa:   item.price_per_tray_paisa,
-    discount_type:          item.discount_type          ?? null,
-    discount_value:         item.discount_value         ?? 0,
-    discounted_price_paisa: item.discounted_price_paisa ?? 0,
+    discount_type:          item.discount_type,
+    discount_value:         item.discount_value,
+    discounted_price_paisa: item.discounted_price_paisa,
     cost_per_tray_paisa:    avgCosts[item.egg_category_id] ?? 0,
   }))
 
@@ -258,10 +255,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const movementRows = items.map((item: {
-    egg_category_id: string
-    quantity_trays:  number
-  }) => ({
+  const movementRows = saleItems.map(item => ({
     tenant_id:       writeTenantId,
     egg_category_id: item.egg_category_id,
     movement_type:   'sale_out',
@@ -284,17 +278,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const subtotalPaisa = items.reduce(
-    (sum: number, item: {
-      quantity_trays:         number
-      price_per_tray_paisa:   number
-      discounted_price_paisa?: number
-    }) => sum + effectiveItemLineTotalPaisa(item),
-    0,
-  )
-  const totalPaisa = subtotalPaisa - (discount_amount_paisa ?? 0)
-
-  if (payment_status === 'paid') {
+  if (payment_status === 'paid' && totalPaisa > 0) {
     const { error: paymentError } = await supabase
       .from('customer_payments')
       .insert({
@@ -320,7 +304,8 @@ export async function POST(request: Request) {
   if (
     payment_status === 'partial' &&
     amount_paid_paisa &&
-    amount_paid_paisa > 0
+    amount_paid_paisa > 0 &&
+    totalPaisa > 0
   ) {
     const { error: paymentError } = await supabase
       .from('customer_payments')

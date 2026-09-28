@@ -9,6 +9,8 @@ import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
+  validateSaleItems,
+  validateSaleDiscount,
 } from '@/lib/utils'
 
 const SALE_SELECT = `
@@ -137,29 +139,17 @@ export async function PATCH(
     due_date,
     discount_type,
     discount_value,
-    discount_amount_paisa,
     paid_by,
     paid_by_partner_id,
     paid_by_partner_source,
     items,
   } = body
 
-  if (items !== undefined) {
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one item is required' },
-        { status: 400 },
-      )
-    }
-    for (const item of items) {
-      if (!item.egg_category_id || !item.quantity_trays || !item.price_per_tray_paisa) {
-        return NextResponse.json(
-          { error: 'Each item needs category, quantity, and price' },
-          { status: 400 },
-        )
-      }
-    }
+  const validatedItems = items === undefined ? null : validateSaleItems(items)
+  if (validatedItems && !validatedItems.ok) {
+    return NextResponse.json({ error: validatedItems.error }, { status: 400 })
   }
+  const saleItems = validatedItems?.ok ? validatedItems.items : undefined
 
   const { data: existing, error: fetchError } = await tenantEq(
     supabase
@@ -171,7 +161,16 @@ export async function PATCH(
         customer_id,
         payment_status,
         amount_paid_paisa,
+        discount_type,
+        discount_value,
         discount_amount_paisa,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discount_type,
+          discount_value,
+          discounted_price_paisa
+        ),
         paid_by,
         paid_by_partner_id,
         paid_by_partner_source
@@ -188,6 +187,16 @@ export async function PATCH(
   }
 
   const invoiceNumber = existing.invoice_number
+
+  const subtotalPaisa = computeSaleSubtotalPaisa(saleItems ?? existing.items ?? [])
+  const saleDiscount = validateSaleDiscount(
+    subtotalPaisa,
+    discount_type === undefined ? existing.discount_type : discount_type,
+    discount_value === undefined ? existing.discount_value : discount_value,
+  )
+  if (!saleDiscount.ok) {
+    return NextResponse.json({ error: saleDiscount.error }, { status: 400 })
+  }
 
   if (customer_id !== undefined && customer_id !== existing.customer_id) {
     if (existing.payment_status !== 'unpaid' || (existing.amount_paid_paisa ?? 0) !== 0) {
@@ -247,11 +256,11 @@ export async function PATCH(
     }
   }
 
-  if (items !== undefined) {
+  if (saleItems !== undefined) {
     const stockAvailability = await validateSaleStockAvailability({
       supabase,
       tenantId: writeTenantId,
-      items,
+      items: saleItems,
       existingSaleId: id,
     })
 
@@ -284,9 +293,16 @@ export async function PATCH(
   if (sale_date             !== undefined) updates.sale_date             = sale_date
   if (notes                 !== undefined) updates.notes                 = notes || null
   if (due_date              !== undefined) updates.due_date              = due_date || null
-  if (discount_type         !== undefined) updates.discount_type         = discount_type || null
-  if (discount_value        !== undefined) updates.discount_value        = discount_value ?? 0
-  if (discount_amount_paisa !== undefined) updates.discount_amount_paisa = discount_amount_paisa ?? 0
+  if (
+    saleItems !== undefined ||
+    discount_type !== undefined ||
+    discount_value !== undefined ||
+    Object.prototype.hasOwnProperty.call(body, 'discount_amount_paisa')
+  ) {
+    updates.discount_type         = saleDiscount.discount_type
+    updates.discount_value        = saleDiscount.discount_value
+    updates.discount_amount_paisa = saleDiscount.discount_amount_paisa
+  }
 
   if (paid_by !== undefined) {
     const paidBy = paid_by === 'partner' ? 'partner' : 'business'
@@ -313,8 +329,8 @@ export async function PATCH(
 
   const movementDate = sale_date ?? existing.sale_date
 
-  if (items !== undefined) {
-    const categoryIds = [...new Set(items.map((i: { egg_category_id: string }) =>
+  if (saleItems !== undefined) {
+    const categoryIds = [...new Set(saleItems.map((i: { egg_category_id: string }) =>
       i.egg_category_id
     ))]
 
@@ -362,22 +378,15 @@ export async function PATCH(
       return NextResponse.json({ error: delMovError.message }, { status: 500 })
     }
 
-    const itemRows = items.map((item: {
-      egg_category_id:        string
-      quantity_trays:         number
-      price_per_tray_paisa:   number
-      discount_type?:         'percentage' | 'fixed' | null
-      discount_value?:        number
-      discounted_price_paisa?: number
-    }) => ({
+    const itemRows = saleItems.map(item => ({
       tenant_id:              writeTenantId,
       sale_id:                id,
       egg_category_id:        item.egg_category_id,
       quantity_trays:         item.quantity_trays,
       price_per_tray_paisa:   item.price_per_tray_paisa,
-      discount_type:          item.discount_type          ?? null,
-      discount_value:         item.discount_value         ?? 0,
-      discounted_price_paisa: item.discounted_price_paisa ?? 0,
+      discount_type:          item.discount_type,
+      discount_value:         item.discount_value,
+      discounted_price_paisa: item.discounted_price_paisa,
       cost_per_tray_paisa:    avgCosts[item.egg_category_id] ?? 0,
     }))
 
@@ -389,10 +398,7 @@ export async function PATCH(
       return NextResponse.json({ error: itemsError.message }, { status: 500 })
     }
 
-    const movementRows = items.map((item: {
-      egg_category_id: string
-      quantity_trays:  number
-    }) => ({
+    const movementRows = saleItems.map(item => ({
       tenant_id:       writeTenantId,
       egg_category_id: item.egg_category_id,
       movement_type:   'sale_out',

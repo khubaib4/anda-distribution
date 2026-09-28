@@ -180,6 +180,77 @@ export function isPositiveNumber(val: unknown): boolean {
 
 export type DiscountType = 'percentage' | 'fixed'
 
+export type ValidatedSaleItem = {
+  egg_category_id: string
+  quantity_trays: number
+  price_per_tray_paisa: number
+  discount_type: DiscountType | null
+  discount_value: number
+  discounted_price_paisa: number
+}
+
+export function validateSaleItems(items: unknown):
+  | { ok: true; items: ValidatedSaleItem[] }
+  | { ok: false; error: string } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: false, error: 'At least one item is required' }
+  }
+
+  const validated: ValidatedSaleItem[] = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item) ||
+        typeof item.egg_category_id !== 'string' || !item.egg_category_id ||
+        typeof item.quantity_trays !== 'number' ||
+        !Number.isFinite(item.quantity_trays) || item.quantity_trays <= 0 ||
+        typeof item.price_per_tray_paisa !== 'number' ||
+        !Number.isSafeInteger(item.price_per_tray_paisa) ||
+        item.price_per_tray_paisa <= 0 ||
+        !Number.isSafeInteger(item.quantity_trays * item.price_per_tray_paisa)) {
+      return { ok: false, error: 'Each item needs a category, a finite positive quantity, and a positive safe-integer price in paisa' }
+    }
+
+    const discountType = item.discount_type ?? null
+    if (discountType !== null && discountType !== 'percentage' && discountType !== 'fixed') {
+      return { ok: false, error: 'Invalid item discount type' }
+    }
+
+    const discountValue = discountType === null ? 0 : item.discount_value
+    if (discountType !== null &&
+        (typeof discountValue !== 'number' || !Number.isFinite(discountValue) ||
+         discountValue < 0 || (discountType === 'percentage' && discountValue > 100))) {
+      return { ok: false, error: 'Invalid item discount value' }
+    }
+
+    const discountedPrice = computeDiscountedPricePaisa(
+      item.quantity_trays,
+      item.price_per_tray_paisa,
+      discountType,
+      discountValue,
+    )
+    const lineTotal = computeDiscountedLineTotalPaisa(
+      item.quantity_trays,
+      item.price_per_tray_paisa,
+      discountType,
+      discountValue,
+    )
+    if (!Number.isSafeInteger(discountedPrice) ||
+        !Number.isSafeInteger(lineTotal)) {
+      return { ok: false, error: 'Item discount exceeds the supported paisa range' }
+    }
+
+    validated.push({
+      egg_category_id: item.egg_category_id,
+      quantity_trays: item.quantity_trays,
+      price_per_tray_paisa: item.price_per_tray_paisa,
+      discount_type: discountType,
+      discount_value: discountValue,
+      discounted_price_paisa: discountedPrice,
+    })
+  }
+
+  return { ok: true, items: validated }
+}
+
 export function computeDiscountedPricePaisa(
   quantityTrays: number,
   pricePerTrayPaisa: number,
@@ -195,20 +266,37 @@ export function computeDiscountedPricePaisa(
     return 0
   }
 
-  const lineTotal = quantityTrays * pricePerTrayPaisa
-  let discountedTotal: number
+  // Rounded unit price is for storage/display; line totals use the exact line helper.
+  return Math.round(computeDiscountedLineTotalPaisa(
+    quantityTrays,
+    pricePerTrayPaisa,
+    discountType,
+    discountValue,
+  ) / quantityTrays)
+}
 
-  if (discountType === 'percentage') {
-    const discountAmount = Math.round(lineTotal * discountValue / 100)
-    discountedTotal = Math.max(0, lineTotal - discountAmount)
-  } else {
-    const discountAmountPaisa = Math.round(
-      (discountValue * 100 / 12) * quantityTrays,
-    )
-    discountedTotal = Math.max(0, lineTotal - discountAmountPaisa)
+export function computeDiscountedLineTotalPaisa(
+  quantityTrays: number,
+  pricePerTrayPaisa: number,
+  discountType: DiscountType | null,
+  discountValue: number,
+): number {
+  const originalLinePaisa = quantityTrays * pricePerTrayPaisa
+  if (!discountType || !Number.isFinite(discountValue) || discountValue <= 0 ||
+      (discountType === 'percentage' && discountValue > 100)) {
+    return originalLinePaisa
   }
 
-  return Math.round(discountedTotal / quantityTrays)
+  let discountPaisa: number
+  if (discountType === 'percentage') {
+    discountPaisa = Math.round(originalLinePaisa * discountValue / 100)
+  } else {
+    discountPaisa = Math.round(
+      discountValue * 100 * quantityTrays / 12,
+    )
+  }
+
+  return Math.max(0, originalLinePaisa - discountPaisa)
 }
 
 export function computeLineDiscountSavingPaisa(
@@ -219,20 +307,41 @@ export function computeLineDiscountSavingPaisa(
 ): number {
   if (!discountType || discountValue <= 0 || quantityTrays <= 0) return 0
   const lineTotal = quantityTrays * pricePerTrayPaisa
-  const discountedPrice = computeDiscountedPricePaisa(
+  const discountedLineTotal = computeDiscountedLineTotalPaisa(
     quantityTrays,
     pricePerTrayPaisa,
     discountType,
     discountValue,
   )
-  if (discountedPrice <= 0) return 0
-  return lineTotal - quantityTrays * discountedPrice
+  return lineTotal - discountedLineTotal
 }
 
 export function effectiveItemPricePaisa(item: {
   price_per_tray_paisa: number
-  discounted_price_paisa?: number
+  discount_type?: DiscountType | null
+  discount_value?: number | null
+  quantity_trays?: number
+  quantity_peti?: number
+  quantity_tray?: number
+  discounted_price_paisa?: number | null
 }): number {
+  if (item.discount_type === 'percentage' || item.discount_type === 'fixed') {
+    if (typeof item.discount_value === 'number' &&
+        Number.isFinite(item.discount_value) && item.discount_value > 0 &&
+        (item.discount_type !== 'percentage' || item.discount_value <= 100)) {
+      const trays = item.quantity_trays
+        ?? (item.quantity_peti ?? 0) * 12 + (item.quantity_tray ?? 0)
+      return computeDiscountedPricePaisa(
+        trays,
+        item.price_per_tray_paisa,
+        item.discount_type,
+        item.discount_value,
+      )
+    }
+    return item.price_per_tray_paisa
+  }
+  if (item.discount_type === null) return item.price_per_tray_paisa
+
   const discounted = item.discounted_price_paisa ?? 0
   if (discounted > 0 && discounted !== item.price_per_tray_paisa) {
     return discounted
@@ -245,10 +354,22 @@ export function effectiveItemLineTotalPaisa(item: {
   quantity_peti?: number
   quantity_tray?: number
   price_per_tray_paisa: number
-  discounted_price_paisa?: number
+  discount_type?: DiscountType | null
+  discount_value?: number | null
+  discounted_price_paisa?: number | null
 }): number {
   const trays = item.quantity_trays
     ?? (item.quantity_peti ?? 0) * 12 + (item.quantity_tray ?? 0)
+  if (item.discount_type === null) return trays * item.price_per_tray_paisa
+  if (item.discount_type === 'percentage' || item.discount_type === 'fixed') {
+    return computeDiscountedLineTotalPaisa(
+      trays,
+      item.price_per_tray_paisa,
+      item.discount_type,
+      item.discount_value ?? 0,
+    )
+  }
+  // Older callers without discount metadata retain their stored-price fallback.
   return trays * effectiveItemPricePaisa(item)
 }
 
@@ -256,7 +377,9 @@ export function computeSaleSubtotalPaisa(
   items: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
-    discounted_price_paisa?: number
+    discount_type?: DiscountType | null
+    discount_value?: number | null
+    discounted_price_paisa?: number | null
   }>,
 ): number {
   return items.reduce(
@@ -271,7 +394,9 @@ export function computeSaleTotalPaisa(sale: {
   items?: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
-    discounted_price_paisa?: number
+    discount_type?: DiscountType | null
+    discount_value?: number | null
+    discounted_price_paisa?: number | null
   }>
 }): number {
   return computeSaleSubtotalPaisa(sale.items ?? [])
@@ -294,6 +419,42 @@ export function computeDiscountAmountPaisa(
     )
   }
   return Math.min(subtotalPaisa, Math.round(discountValue * 100))
+}
+
+export function validateSaleDiscount(
+  subtotalPaisa: number,
+  discountType: unknown,
+  discountValue: unknown,
+):
+  | { ok: true; discount_type: DiscountType | null; discount_value: number; discount_amount_paisa: number }
+  | { ok: false; error: string } {
+  if (!Number.isSafeInteger(subtotalPaisa) || subtotalPaisa < 0) {
+    return { ok: false, error: 'Sale subtotal exceeds the supported paisa range' }
+  }
+
+  const type = discountType ?? null
+  if (type !== null && type !== 'percentage' && type !== 'fixed') {
+    return { ok: false, error: 'Invalid sale discount type' }
+  }
+
+  const value = type === null ? 0 : discountValue
+  if (type !== null &&
+      (typeof value !== 'number' || !Number.isFinite(value) || value < 0 ||
+       (type === 'percentage' && value > 100))) {
+    return { ok: false, error: 'Invalid sale discount value' }
+  }
+
+  const amount = computeDiscountAmountPaisa(subtotalPaisa, type, value as number)
+  if (!Number.isSafeInteger(amount) || amount > subtotalPaisa) {
+    return { ok: false, error: 'Sale discount exceeds the supported paisa range' }
+  }
+
+  return {
+    ok: true,
+    discount_type: type,
+    discount_value: value as number,
+    discount_amount_paisa: amount,
+  }
 }
 
 export function computeSalePaymentBreakdown(sale: {
