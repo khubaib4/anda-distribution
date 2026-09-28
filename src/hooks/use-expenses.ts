@@ -17,6 +17,7 @@ interface Filters {
 
 export function useExpenses(filters: Filters = {}) {
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const url = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.category_id) params.set('category_id', filters.category_id)
@@ -49,7 +50,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function createExpense(payload: ExpensePayload) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch('/api/expenses', {
+    const res = await tenantFetch('/api/expenses', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -63,7 +64,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function updateExpense(id: string, payload: ExpensePayload) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/expenses/${id}`, {
+    const res = await tenantFetch(`/api/expenses/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -77,7 +78,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function deleteExpense(id: string) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/expenses/${id}`, {
+    const res = await tenantFetch(`/api/expenses/${id}`, {
       method: 'DELETE',
     })
     const result = await res.json()

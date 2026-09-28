@@ -91,7 +91,7 @@ export default function SettingsPage() {
     setNameSuccess(false)
     setError(null)
 
-    const res = await window.fetch('/api/settings', {
+    const res = await tenantFetch('/api/settings', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ name: businessName }),
@@ -162,7 +162,7 @@ export default function SettingsPage() {
     setLogoRemoving(true)
     setError(null)
 
-    const res = await window.fetch('/api/settings', {
+    const res = await tenantFetch('/api/settings', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ logo_url: null }),

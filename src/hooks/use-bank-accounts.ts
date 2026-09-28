@@ -3,12 +3,14 @@
 import type { BankAccountBalance } from '@/types'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
 export function useBankAccounts() {
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { data, loading, error, refetch } = useCachedFetch<BankAccountBalance[]>(
     '/api/accounts',
     { ttl: LIST_TTL },
@@ -21,7 +23,7 @@ export function useBankAccounts() {
     nickname?:      string
   }) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch('/api/accounts', {
+    const res = await tenantFetch('/api/accounts', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -44,7 +46,7 @@ export function useBankAccounts() {
     }>,
   ) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/accounts/${id}`, {
+    const res = await tenantFetch(`/api/accounts/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),

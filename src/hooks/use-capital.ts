@@ -60,7 +60,7 @@ export function useCapital() {
     reference?:          string
     notes?:              string
   }) {
-    const res = await window.fetch('/api/capital', {
+    const res = await tenantFetch('/api/capital', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -99,7 +99,7 @@ export function usePartners() {
     full_name: string
     phone?:    string
   }) {
-    const res = await window.fetch('/api/partners', {
+    const res = await tenantFetch('/api/partners', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),

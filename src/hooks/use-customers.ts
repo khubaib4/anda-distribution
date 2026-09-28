@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { CustomerBalance } from '@/types'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
@@ -15,6 +16,7 @@ interface Filters {
 
 export function useCustomers(filters: Filters = {}) {
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const url = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.type)     params.set('type',     filters.type)
@@ -37,7 +39,7 @@ export function useCustomers(filters: Filters = {}) {
     notes?:         string
   }) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch('/api/customers', {
+    const res = await tenantFetch('/api/customers', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -62,7 +64,7 @@ export function useCustomers(filters: Filters = {}) {
     }>,
   ) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/customers/${id}`, {
+    const res = await tenantFetch(`/api/customers/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
