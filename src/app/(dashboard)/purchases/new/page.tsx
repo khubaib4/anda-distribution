@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
@@ -23,7 +24,8 @@ function newItem(): PurchaseItemDraft {
 }
 
 export default function NewPurchasePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const tenantFetch = useTenantFetch()
   const { suppliers } = useSuppliers()
   const { categories } = useEggCategories()
@@ -121,6 +123,7 @@ export default function NewPurchasePage() {
         return
       }
 
+      if (!canNavigateAfterMutation()) return
       router.push('/purchases')
     } catch {
       setError('Network error — please try again')

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { X, Download, Pencil } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import {
@@ -31,7 +31,7 @@ export default function SaleDetailModal({
   saleId,
   onClose,
 }: Props) {
-  const router = useRouter()
+  const router = useTenantRouter()
   const { logoUrl } = useTenant()
   const tenantFetch = useTenantFetch()
   const [sale,    setSale]    = useState<Sale & {

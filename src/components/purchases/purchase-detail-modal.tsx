@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
 import TenantLink from '@/components/tenant-link'
 import { X, Pencil } from 'lucide-react'
 import {
@@ -24,7 +24,7 @@ export default function PurchaseDetailModal({
   purchaseId,
   onClose,
 }: Props) {
-  const router = useRouter()
+  const router = useTenantRouter()
   const tenantFetch = useTenantFetch()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading,  setLoading]  = useState(true)

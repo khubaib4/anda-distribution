@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
@@ -54,7 +56,8 @@ function saleToItems(sale: Sale): SaleItemDraft[] {
 }
 
 export default function EditSalePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const { userId, tenantId } = useTenant()
   const tenantFetch = useTenantFetch()
   const params = useParams()
@@ -299,6 +302,7 @@ export default function EditSalePage() {
       }
 
       if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
+      if (!canNavigateAfterMutation()) return
       router.push('/sales')
     } catch {
       setError('Network error — please try again')

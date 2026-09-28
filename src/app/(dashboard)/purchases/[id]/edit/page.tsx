@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
@@ -35,7 +37,8 @@ function purchaseToItems(purchase: Purchase): PurchaseItemDraft[] {
 }
 
 export default function EditPurchasePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const params = useParams()
   const purchaseId = params.id as string
   const tenantFetch = useTenantFetch()
@@ -175,6 +178,7 @@ export default function EditPurchasePage() {
         return
       }
 
+      if (!canNavigateAfterMutation()) return
       router.push('/purchases')
     } catch {
       setError('Network error — please try again')

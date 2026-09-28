@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import TenantLink from '@/components/tenant-link'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { Plus, ChevronDown, Pencil } from 'lucide-react'
 import { usePurchases } from '@/hooks/use-purchases'
 import { useSuppliers } from '@/hooks/use-suppliers'
@@ -16,7 +16,7 @@ import {
 } from '@/lib/utils'
 
 export default function PurchasesPage() {
-  const router = useRouter()
+  const router = useTenantRouter()
 
   // Filters
   const [status,     setStatus]     = useState('')
