@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
+import { recalculateSupplierPurchaseAllocations } from '@/lib/supplier-payment-allocation'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -236,5 +237,66 @@ export async function POST(request: Request) {
     )
   }
 
-  return NextResponse.json(purchase, { status: 201 })
+  if (!supplier_id) {
+    return NextResponse.json(purchase, { status: 201 })
+  }
+
+  let allocation: Awaited<ReturnType<typeof recalculateSupplierPurchaseAllocations>> | undefined
+  let allocationWarning: string | undefined
+  try {
+    allocation = await recalculateSupplierPurchaseAllocations({
+      supabase,
+      tenantId: writeTenantId,
+      supplierId: supplier_id,
+    })
+  } catch (allocationError) {
+    console.error('Purchase saved but supplier FIFO allocation failed', {
+      tenantId: writeTenantId,
+      supplierId: supplier_id,
+      purchaseId: purchase.id,
+      invoiceNumber: invoice_number,
+      error: allocationError,
+    })
+    allocationWarning =
+      'Purchase was saved, but supplier payment allocation could not be refreshed automatically. Do not create this purchase again.'
+  }
+
+  try {
+    const { data: refreshedPurchase, error: refreshError } = await supabase
+      .from('purchases')
+      .select('*')
+      .eq('id', purchase.id)
+      .eq('tenant_id', writeTenantId)
+      .single()
+
+    if (refreshError || !refreshedPurchase) {
+      throw refreshError ?? new Error('Purchase not found after saving')
+    }
+
+    return NextResponse.json(
+      allocationWarning
+        ? { ...refreshedPurchase, allocation_warning: allocationWarning }
+        : refreshedPurchase,
+      { status: 201 },
+    )
+  } catch (refreshError) {
+    console.error('Purchase saved but refreshed purchase could not be loaded', {
+      tenantId: writeTenantId,
+      supplierId: supplier_id,
+      purchaseId: purchase.id,
+      invoiceNumber: invoice_number,
+      error: refreshError,
+    })
+    return NextResponse.json(
+      {
+        id: purchase.id,
+        invoice_number: purchase.invoice_number,
+        allocation,
+        allocation_warning: allocationWarning
+          ? `${allocationWarning} Updated purchase data could not be reloaded automatically.`
+          : 'Purchase was saved and supplier payment allocation was refreshed, but updated purchase data could not be reloaded automatically.',
+      },
+      { status: 201 },
+    )
+  }
 }

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { validatePurchaseEditStockAvailability } from '@/lib/stock-availability'
+import { recalculateSupplierPurchaseAllocations } from '@/lib/supplier-payment-allocation'
 
 const PURCHASE_SELECT = `
   *,
@@ -171,6 +172,13 @@ export async function PATCH(
     )
   }
 
+  const oldSupplierId = existing.supplier_id
+  const finalSupplierId = supplier_id !== undefined ? supplier_id || null : oldSupplierId
+  const shouldRecalculateAllocation =
+    items !== undefined ||
+    (purchase_date !== undefined && purchase_date !== existing.purchase_date) ||
+    finalSupplierId !== oldSupplierId
+
   if (items !== undefined) {
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -307,20 +315,73 @@ export async function PATCH(
     }
   }
 
-  const { data, error } = await supabase
-    .from('purchases')
-    .select(PURCHASE_SELECT)
-    .eq('id', id)
-    .eq('tenant_id', writeTenantId)
-    .single()
+  let allocationWarning: string | undefined
+  if (shouldRecalculateAllocation) {
+    const supplierIds = Array.from(
+      new Set(
+        [oldSupplierId, finalSupplierId].filter(
+          (supplierId): supplierId is string => Boolean(supplierId),
+        ),
+      ),
+    )
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    for (const allocationSupplierId of supplierIds) {
+      try {
+        await recalculateSupplierPurchaseAllocations({
+          supabase,
+          tenantId: writeTenantId,
+          supplierId: allocationSupplierId,
+        })
+      } catch (allocationError) {
+        console.error('Purchase saved but supplier FIFO allocation failed', {
+          tenantId: writeTenantId,
+          oldSupplierId,
+          newSupplierId: finalSupplierId,
+          supplierId: allocationSupplierId,
+          purchaseId: id,
+          invoiceNumber,
+          error: allocationError,
+        })
+        allocationWarning =
+          'Purchase was saved, but supplier payment allocation could not be refreshed automatically. Do not repeat this edit.'
+      }
+    }
+  }
+
+  let finalData
+  try {
+    const { data, error } = await supabase
+      .from('purchases')
+      .select(PURCHASE_SELECT)
+      .eq('id', id)
+      .eq('tenant_id', writeTenantId)
+      .single()
+
+    if (error || !data) {
+      throw error ?? new Error('Purchase not found after saving')
+    }
+    finalData = data
+  } catch (refreshError) {
+    console.error('Purchase saved but refreshed purchase could not be loaded', {
+      tenantId: writeTenantId,
+      oldSupplierId,
+      newSupplierId: finalSupplierId,
+      purchaseId: id,
+      invoiceNumber,
+      error: refreshError,
+    })
+    return NextResponse.json({
+      id,
+      invoice_number: invoiceNumber,
+      allocation_warning: allocationWarning
+        ? `${allocationWarning} Updated purchase data could not be reloaded automatically.`
+        : 'Purchase was saved, but updated purchase data could not be reloaded automatically. Do not repeat this edit.',
+    })
   }
 
   const enriched = {
-    ...data,
-    total_paisa: (data.items ?? []).reduce(
+    ...finalData,
+    total_paisa: (finalData.items ?? []).reduce(
       (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
         sum + item.quantity_trays * item.price_per_tray_paisa,
       0
@@ -328,5 +389,9 @@ export async function PATCH(
   }
 
   const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])
-  return NextResponse.json(withPartnerName)
+  return NextResponse.json(
+    allocationWarning
+      ? { ...withPartnerName, allocation_warning: allocationWarning }
+      : withPartnerName,
+  )
 }
