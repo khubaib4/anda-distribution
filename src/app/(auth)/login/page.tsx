@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { cache } from '@/lib/cache'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -30,6 +31,7 @@ function LoginForm() {
       return
     }
 
+    cache.clear()
     const meRes = await window.fetch('/api/me')
     const me    = await meRes.json()
 
@@ -56,6 +58,7 @@ function LoginForm() {
     }
 
     await supabase.auth.signOut()
+    cache.clear()
     setError(
       'Your account is not connected to any business. Contact your administrator.',
     )

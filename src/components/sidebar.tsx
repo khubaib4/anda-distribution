@@ -20,6 +20,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { cache } from '@/lib/cache'
 import { useRouter } from 'next/navigation'
 import { useTenant } from '@/lib/tenant-client'
 import { navPermissionForHref } from '@/lib/permissions'
@@ -50,6 +51,8 @@ export default function Sidebar() {
   const supabase = createClient()
   const tenant   = useTenant()
   const [overdueCount, setOverdueCount] = useState(0)
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
 
   useEffect(() => {
     window.fetch('/api/alerts')
@@ -59,7 +62,18 @@ export default function Sidebar() {
   }, [pathname])
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    if (loggingOut) return
+    setLoggingOut(true)
+    setLogoutError(null)
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+    } catch {
+      setLogoutError('Unable to sign out. Please try again.')
+      setLoggingOut(false)
+      return
+    }
+    cache.clear()
     router.push('/login')
     router.refresh()
   }
@@ -145,14 +159,16 @@ export default function Sidebar() {
       <div className="px-3 py-4 border-t border-stone-800">
         <button
           onClick={handleLogout}
+          disabled={loggingOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md
                      text-sm font-medium text-stone-400
                      hover:text-white hover:bg-stone-800
                      transition-colors duration-150"
         >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          Sign Out
+          {loggingOut ? 'Signing out…' : 'Sign Out'}
         </button>
+        {logoutError && <p className="px-3 text-xs text-red-400">{logoutError}</p>}
       </div>
 
     </aside>

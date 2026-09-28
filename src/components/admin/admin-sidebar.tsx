@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { LayoutDashboard, Building2, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { cache } from '@/lib/cache'
 
 const navItems = [
   { href: '/admin',         label: 'Dashboard', icon: LayoutDashboard },
@@ -19,9 +21,22 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    if (loggingOut) return
+    setLoggingOut(true)
+    setLogoutError(null)
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+    } catch {
+      setLogoutError('Unable to sign out. Please try again.')
+      setLoggingOut(false)
+      return
+    }
+    cache.clear()
     router.push('/login')
     router.refresh()
   }
@@ -73,14 +88,16 @@ export default function AdminSidebar() {
       <div className="px-3 py-4 border-t border-stone-800">
         <button
           onClick={handleLogout}
+          disabled={loggingOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md
                      text-sm font-medium text-stone-400
                      hover:text-white hover:bg-stone-800
                      transition-colors duration-150"
         >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          Sign Out
+          {loggingOut ? 'Signing out…' : 'Sign Out'}
         </button>
+        {logoutError && <p className="px-3 text-xs text-red-400">{logoutError}</p>}
       </div>
     </aside>
   )
