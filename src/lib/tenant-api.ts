@@ -4,6 +4,31 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+type SuperAdminTenantValidation =
+  | { ok: true; tenant: { id: string; name: string; logo_url: string | null } }
+  | { ok: false; reason: 'missing' | 'invalid' | 'not_found' | 'database_error' }
+
+export async function validateSuperAdminTenantId(
+  tenantId: string | null,
+): Promise<SuperAdminTenantValidation> {
+  if (!tenantId) return { ok: false, reason: 'missing' }
+  if (!TENANT_ID_PATTERN.test(tenantId)) return { ok: false, reason: 'invalid' }
+
+  try {
+    const { data: tenant, error } = await createAdminClient()
+      .from('tenants')
+      .select('id, name, logo_url')
+      .eq('id', tenantId)
+      .maybeSingle()
+
+    if (error) return { ok: false, reason: 'database_error' }
+    if (!tenant) return { ok: false, reason: 'not_found' }
+    return { ok: true, tenant }
+  } catch {
+    return { ok: false, reason: 'database_error' }
+  }
+}
+
 export function apiUnauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 }
@@ -31,27 +56,18 @@ export async function authorizeApi(
     ? searchParams.get('tenant_id')
     : ctx.tenantId
 
-  if (!tenantId) {
+  const selection = await validateSuperAdminTenantId(tenantId)
+  if (!selection.ok && selection.reason === 'missing') {
     return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 })
   }
-  if (!TENANT_ID_PATTERN.test(tenantId)) {
-    return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
-  }
-
-  const { data: tenant, error } = await createAdminClient()
-    .from('tenants')
-    .select('id')
-    .eq('id', tenantId)
-    .maybeSingle()
-
-  if (error) {
+  if (!selection.ok && selection.reason === 'database_error') {
     return NextResponse.json({ error: 'Unable to validate tenant_id' }, { status: 500 })
   }
-  if (!tenant) {
+  if (!selection.ok) {
     return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
   }
 
-  return { ctx, tenantId }
+  return { ctx, tenantId: tenantId ?? selection.tenant.id }
 }
 
 export function tenantEq<T>(
