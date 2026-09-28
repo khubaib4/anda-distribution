@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireOwnerOnly } from '@/app/api/settings/route'
+import { requireOwnerOnly } from '@/lib/settings-auth'
 
 async function findUserIdByEmail(email: string): Promise<string | null> {
   const admin = createAdminClient()

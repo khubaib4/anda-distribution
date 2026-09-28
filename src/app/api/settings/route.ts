@@ -1,54 +1,6 @@
 import { NextResponse } from 'next/server'
-import { requireTenant, type TenantContextResult } from '@/lib/tenant'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-type OwnerSettingsAuth =
-  | { ctx: TenantContextResult; tenantId: string }
-  | NextResponse
-
-async function requireOwnerSettings(request: Request): Promise<OwnerSettingsAuth> {
-  let ctx: TenantContextResult
-  try {
-    ctx = await requireTenant()
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (!ctx.isSuperAdmin && ctx.role !== 'owner') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  let tenantId = ctx.tenantId
-  if (ctx.isSuperAdmin) {
-    const scoped = new URL(request.url).searchParams.get('tenant_id')
-    if (scoped) tenantId = scoped
-  }
-
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 })
-  }
-
-  return { ctx, tenantId }
-}
-
-async function requireOwnerOnly(request: Request): Promise<OwnerSettingsAuth> {
-  let ctx: TenantContextResult
-  try {
-    ctx = await requireTenant()
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (ctx.role !== 'owner') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  if (!ctx.tenantId) {
-    return NextResponse.json({ error: 'No tenant found' }, { status: 400 })
-  }
-
-  return { ctx, tenantId: ctx.tenantId }
-}
+import { requireOwnerSettings } from '@/lib/settings-auth'
 
 async function fetchMembers(tenantId: string) {
   const admin = createAdminClient()
@@ -190,5 +142,3 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json(data)
 }
-
-export { requireOwnerOnly, requireOwnerSettings }

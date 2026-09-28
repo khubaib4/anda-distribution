@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireOwnerOnly } from '@/app/api/settings/route'
+import { requireOwnerOnly } from '@/lib/settings-auth'
 
 const MAX_BYTES = 2 * 1024 * 1024
 

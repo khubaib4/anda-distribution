@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireOwnerOnly } from '@/app/api/settings/route'
+import { requireOwnerOnly } from '@/lib/settings-auth'
 
 export async function DELETE(
   request: Request,
