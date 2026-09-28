@@ -122,10 +122,11 @@ export async function PATCH(
   if (notes         !== undefined) updates.notes         = notes?.trim()         || null
   if (is_active     !== undefined) updates.is_active     = is_active
 
-  const { data, error } = await tenantEq(
-    supabase.from('customers').update(updates).eq('id', id),
-    tenantId,
-  )
+  const { data, error } = await supabase
+    .from('customers')
+    .update(updates)
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
     .select()
     .single()
 

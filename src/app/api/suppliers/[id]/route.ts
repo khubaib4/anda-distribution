@@ -109,13 +109,13 @@ export async function PATCH(
   if (notes      !== undefined) updates.notes     = notes?.trim()   || null
   if (is_active  !== undefined) updates.is_active = is_active
 
-  let updateQuery = supabase
+  const { data, error } = await supabase
     .from('suppliers')
     .update(updates)
     .eq('id', id)
-  if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
-
-  const { data, error } = await updateQuery.select().single()
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
