@@ -24,6 +24,7 @@ import { cache } from '@/lib/cache'
 import { useRouter } from 'next/navigation'
 import { useTenant } from '@/lib/tenant-client'
 import { navPermissionForHref } from '@/lib/permissions'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const navItems = [
   { href: '/',           label: 'Dashboard', icon: LayoutDashboard },
@@ -50,16 +51,20 @@ export default function Sidebar() {
   const router   = useRouter()
   const supabase = createClient()
   const tenant   = useTenant()
+  const tenantFetch = useTenantFetch()
   const [overdueCount, setOverdueCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/alerts')
-      .then(r => r.json())
+    tenantFetch('/api/alerts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load alerts')
+        return r.json()
+      })
       .then(d => setOverdueCount(d.counts?.overdue ?? 0))
       .catch(console.error)
-  }, [pathname])
+  }, [pathname, tenantFetch])
 
   async function handleLogout() {
     if (loggingOut) return

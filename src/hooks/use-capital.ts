@@ -6,6 +6,7 @@ import type {
   CapitalTransaction,
   PartnerOption,
 } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface CapitalData {
   summaries:     PartnerCapitalSummary[]
@@ -28,6 +29,7 @@ export function parsePartnerOptionValue(value: string): {
 }
 
 export function useCapital() {
+  const tenantFetch = useTenantFetch()
   const [data,    setData]    = useState<CapitalData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
@@ -36,7 +38,7 @@ export function useCapital() {
     setLoading(true)
     setError(null)
     try {
-      const res = await window.fetch('/api/capital')
+      const res = await tenantFetch('/api/capital')
       if (!res.ok) throw new Error('Failed to load capital data')
       const json = await res.json()
       setData(json)
@@ -45,7 +47,7 @@ export function useCapital() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => { fetch() }, [fetch])
 
@@ -73,13 +75,14 @@ export function useCapital() {
 }
 
 export function usePartners() {
+  const tenantFetch = useTenantFetch()
   const [partners, setPartners] = useState<PartnerOption[]>([])
   const [loading,  setLoading]  = useState(true)
 
   const fetch = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await window.fetch('/api/partners')
+      const res = await tenantFetch('/api/partners')
       if (!res.ok) throw new Error('Failed to load partners')
       const data = await res.json()
       setPartners(data)
@@ -88,7 +91,7 @@ export function usePartners() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => { fetch() }, [fetch])
 

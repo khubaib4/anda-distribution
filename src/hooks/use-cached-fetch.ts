@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Options {
   ttl?:     number
@@ -20,6 +21,7 @@ export function useCachedFetch<T>(url: string | null, options?: Options) {
   const ttl     = options?.ttl ?? 30000
   const enabled = options?.enabled ?? true
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const scope = useMemo(
     () => createCacheScope(userId, tenantId),
     [userId, tenantId],
@@ -92,7 +94,7 @@ export function useCachedFetch<T>(url: string | null, options?: Options) {
     }
 
     try {
-      const res = await window.fetch(url, { signal: controller.signal })
+      const res = await tenantFetch(url, { signal: controller.signal })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(
@@ -121,7 +123,7 @@ export function useCachedFetch<T>(url: string | null, options?: Options) {
     } finally {
       if (controllerRef.current === controller) controllerRef.current = null
     }
-  }, [scope, url, requestKey, ttl])
+  }, [scope, url, requestKey, ttl, tenantFetch])
 
   useEffect(() => {
     activeRef.current = true

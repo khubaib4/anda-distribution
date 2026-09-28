@@ -5,6 +5,7 @@ import type { Expense, ExpenseCategory } from '@/types'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
 import { useTenant } from '@/lib/tenant-client'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const LIST_TTL = 15000
 
@@ -97,16 +98,20 @@ export function useExpenses(filters: Filters = {}) {
 }
 
 export function useExpenseCategories() {
+  const tenantFetch = useTenantFetch()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading,    setLoading]    = useState(true)
 
   useEffect(() => {
-    window.fetch('/api/expenses/categories')
-      .then(r => r.json())
+    tenantFetch('/api/expenses/categories')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load expense categories')
+        return r.json()
+      })
       .then(data => setCategories(data))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   return { categories, loading }
 }

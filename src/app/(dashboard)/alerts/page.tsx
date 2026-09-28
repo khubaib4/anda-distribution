@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Phone, ChevronRight } from 'lucide-react'
 import { formatPKR } from '@/lib/utils'
 import type { OverdueSale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface AlertsData {
   overdue:   OverdueSale[]
@@ -71,17 +72,21 @@ function AlertCard({
 }
 
 export default function AlertsPage() {
+  const tenantFetch = useTenantFetch()
   const [data,    setData]    = useState<AlertsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/alerts')
-      .then(r => r.json())
+    tenantFetch('/api/alerts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load alerts')
+        return r.json()
+      })
       .then(setData)
       .catch(() => setError('Failed to load alerts'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   return (
     <div className="max-w-2xl mx-auto">

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatPKR, formatDate, todayString } from '@/lib/utils'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface CashBookData {
   date: string
@@ -55,6 +56,7 @@ function formatMethod(method: string | null): string | null {
 
 export default function CashBookPage() {
   const { permissions } = useTenant()
+  const tenantFetch = useTenantFetch()
   const [date,    setDate]    = useState(todayString())
   const [data,    setData]    = useState<CashBookData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,7 +66,7 @@ export default function CashBookPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await window.fetch(`/api/cash-book?date=${date}`)
+      const res = await tenantFetch(`/api/cash-book?date=${date}`)
       if (!res.ok) throw new Error('Failed to load cash book')
       setData(await res.json())
     } catch (e) {
@@ -72,7 +74,7 @@ export default function CashBookPage() {
     } finally {
       setLoading(false)
     }
-  }, [date])
+  }, [date, tenantFetch])
 
   useEffect(() => { load() }, [load])
 

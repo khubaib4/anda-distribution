@@ -21,6 +21,7 @@ import {
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
 import type { BankAccountBalance } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -43,6 +44,7 @@ function newItem(): SaleItemDraft {
 export default function NewSalePage() {
   const router = useRouter()
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { customers }  = useCustomers()
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
@@ -72,13 +74,16 @@ export default function NewSalePage() {
   const [error,  setError]  = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<SaleItemDraft>) => {

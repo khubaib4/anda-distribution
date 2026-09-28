@@ -12,6 +12,7 @@ import {
   paymentStatusLabel,
 } from '@/lib/utils'
 import type { Purchase } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Props {
   purchaseId: string
@@ -24,19 +25,23 @@ export default function PurchaseDetailModal({
   onClose,
 }: Props) {
   const router = useRouter()
+  const tenantFetch = useTenantFetch()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch(`/api/purchases/${purchaseId}`)
-      .then(r => r.json())
+    tenantFetch(`/api/purchases/${purchaseId}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load purchase')
+        return r.json()
+      })
       .then(data => {
         setPurchase(data)
       })
       .catch(() => setError('Failed to load purchase'))
       .finally(() => setLoading(false))
-  }, [purchaseId])
+  }, [purchaseId, tenantFetch])
 
   const totalPaisa    = purchase?.total_paisa ?? 0
   const paidPaisa     = purchase?.amount_paid_paisa ?? 0

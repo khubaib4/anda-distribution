@@ -18,6 +18,7 @@ import {
   paymentStatusLabel,
 } from '@/lib/utils'
 import { SkeletonCard, SkeletonText } from '@/components/ui/skeleton'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface DashboardData {
   today: {
@@ -69,17 +70,21 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const tenantFetch = useTenantFetch()
   const [data,    setData]    = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
   useEffect(() => {
-    window.fetch('/api/dashboard')
-      .then(r => r.json())
+    tenantFetch('/api/dashboard')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load dashboard')
+        return r.json()
+      })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   const today = new Date().toLocaleDateString('en-PK', {
     weekday: 'long',

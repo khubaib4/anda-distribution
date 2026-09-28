@@ -19,6 +19,7 @@ import {
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import { useTenant } from '@/lib/tenant-client'
 import type { Sale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Props {
   saleId:    string
@@ -32,6 +33,7 @@ export default function SaleDetailModal({
 }: Props) {
   const router = useRouter()
   const { logoUrl } = useTenant()
+  const tenantFetch = useTenantFetch()
   const [sale,    setSale]    = useState<Sale & {
     cogs_paisa?: number
     subtotal_paisa?: number
@@ -40,14 +42,17 @@ export default function SaleDetailModal({
   const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch(`/api/sales/${saleId}`)
-      .then(r => r.json())
+    tenantFetch(`/api/sales/${saleId}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load sale')
+        return r.json()
+      })
       .then(data => {
         setSale(data)
       })
       .catch(() => setError('Failed to load sale'))
       .finally(() => setLoading(false))
-  }, [saleId])
+  }, [saleId, tenantFetch])
 
   const subtotalPaisa = computeSaleSubtotalPaisa(sale?.items ?? [])
   const totalPaisa = computeSaleTotalPaisa(sale ?? { items: [] })

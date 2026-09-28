@@ -23,6 +23,7 @@ import {
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
 import type { PartnerOption, Sale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): SaleItemDraft {
   return {
@@ -55,6 +56,7 @@ function saleToItems(sale: Sale): SaleItemDraft[] {
 export default function EditSalePage() {
   const router = useRouter()
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const params = useParams()
   const saleId = params.id as string
 
@@ -93,17 +95,20 @@ export default function EditSalePage() {
   const [error,  setError]  = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/partners')
-      .then(r => r.json())
+    tenantFetch('/api/partners')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load partners')
+        return r.json()
+      })
       .then((data: PartnerOption[]) => setPartners(data))
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => {
     setLoading(true)
     setLoadError(null)
 
-    window.fetch(`/api/sales/${saleId}`)
+    tenantFetch(`/api/sales/${saleId}`)
       .then(async r => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? 'Failed to load sale')
@@ -154,7 +159,7 @@ export default function EditSalePage() {
         )
       })
       .finally(() => setLoading(false))
-  }, [saleId])
+  }, [saleId, tenantFetch])
 
   const selectedPaidByPartner = partners.find(
     p => p.id === paidByPartnerId && p.source === paidByPartnerSource,

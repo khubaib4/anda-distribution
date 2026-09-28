@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useExpenseCategories } from '@/hooks/use-expenses'
 import { todayString, toPaisa, formatPKR } from '@/lib/utils'
 import type { BankAccountBalance, Expense, PartnerOption } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Props {
   initial?: Expense
@@ -31,6 +32,7 @@ function accountLabel(account: BankAccountBalance): string {
 }
 
 export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
+  const tenantFetch = useTenantFetch()
   const isEdit = !!initial
   const { categories } = useExpenseCategories()
 
@@ -77,20 +79,26 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
   const isLabor          = catName === 'Labor'
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => {
-    window.fetch('/api/partners')
-      .then(r => r.json())
+    tenantFetch('/api/partners')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load partners')
+        return r.json()
+      })
       .then((data: PartnerOption[]) => setPartners(data))
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   const selectedPaidByPartner = partners.find(
     p => p.id === paidByPartnerId && p.source === paidByPartnerSource,

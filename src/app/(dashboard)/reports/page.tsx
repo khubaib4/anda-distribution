@@ -7,6 +7,7 @@ import {
 } from '@/lib/utils'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface PLData {
   period: { from: string; to: string }
@@ -85,6 +86,7 @@ function PLRow({
 
 export default function ReportsPage() {
   const { permissions } = useTenant()
+  const tenantFetch = useTenantFetch()
 
   const today      = new Date().toISOString().split('T')[0]
   const monthStart = today.slice(0, 7) + '-01'
@@ -99,7 +101,7 @@ export default function ReportsPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await window.fetch(
+      const res = await tenantFetch(
         `/api/reports/pl?from=${from}&to=${to}`
       )
       if (!res.ok) throw new Error('Failed to load report')
@@ -110,7 +112,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [from, to])
+  }, [from, to, tenantFetch])
 
   useEffect(() => { loadReport() }, [loadReport])
 

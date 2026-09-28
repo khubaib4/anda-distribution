@@ -23,6 +23,7 @@ import {
 import { useTenant } from '@/lib/tenant-client'
 import type { CustomerBalance, BankAccountBalance } from '@/types'
 import { SkeletonList } from '@/components/ui/skeleton'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -48,6 +49,7 @@ export default function CustomerDetailPage({
 }) {
   const { id } = use(params)
   const { logoUrl } = useTenant()
+  const tenantFetch = useTenantFetch()
 
   const [customer,     setCustomer]     = useState<CustomerBalance | null>(null)
   const [ledgerData,   setLedgerData]   = useState<LedgerData | null>(null)
@@ -69,7 +71,8 @@ export default function CustomerDetailPage({
   async function loadCustomer() {
     setLoadingCust(true)
     try {
-      const res = await fetch(`/api/customers/${id}`)
+      const res = await tenantFetch(`/api/customers/${id}`)
+      if (!res.ok) throw new Error('Failed to load customer')
       const data = await res.json()
       setCustomer(data)
     } catch {
@@ -82,7 +85,8 @@ export default function CustomerDetailPage({
   async function loadLedger() {
     setLoadingLedger(true)
     try {
-      const res = await fetch(`/api/customers/${id}/ledger`)
+      const res = await tenantFetch(`/api/customers/${id}/ledger`)
+      if (!res.ok) throw new Error('Failed to load ledger')
       const data = await res.json()
       setLedgerData(data)
     } catch {
@@ -95,16 +99,19 @@ export default function CustomerDetailPage({
   useEffect(() => {
     loadCustomer()
     loadLedger()
-  }, [id])
+  }, [id, tenantFetch])
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()

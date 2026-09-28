@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { Purchase } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Filters {
   status?:      string
@@ -11,6 +12,7 @@ interface Filters {
 }
 
 export function usePurchases(filters: Filters = {}) {
+  const tenantFetch = useTenantFetch()
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
@@ -26,7 +28,7 @@ export function usePurchases(filters: Filters = {}) {
       if (filters.to)          params.set('to',          filters.to)
 
       const qs  = params.toString()
-      const res = await window.fetch(`/api/purchases${qs ? `?${qs}` : ''}`)
+      const res = await tenantFetch(`/api/purchases${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to load purchases')
       const data = await res.json()
       setPurchases(data)
@@ -35,7 +37,7 @@ export function usePurchases(filters: Filters = {}) {
     } finally {
       setLoading(false)
     }
-  }, [filters.status, filters.supplier_id, filters.from, filters.to])
+  }, [filters.status, filters.supplier_id, filters.from, filters.to, tenantFetch])
 
   useEffect(() => { fetch() }, [fetch])
 

@@ -15,6 +15,7 @@ import {
   todayString,
 } from '@/lib/utils'
 import type { SupplierBalance, SupplierLedgerEntry, BankAccountBalance } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -36,6 +37,7 @@ export default function SupplierDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  const tenantFetch = useTenantFetch()
 
   const [supplier,      setSupplier]      = useState<SupplierBalance | null>(null)
   const [ledgerData,    setLedgerData]    = useState<LedgerData | null>(null)
@@ -57,7 +59,8 @@ export default function SupplierDetailPage({
   async function loadSupplier() {
     setLoadingCust(true)
     try {
-      const res  = await window.fetch(`/api/suppliers/${id}`)
+      const res  = await tenantFetch(`/api/suppliers/${id}`)
+      if (!res.ok) throw new Error('Failed to load supplier')
       const data = await res.json()
       setSupplier(data)
     } catch { /* ignore */ }
@@ -67,7 +70,8 @@ export default function SupplierDetailPage({
   async function loadLedger() {
     setLoadingLedger(true)
     try {
-      const res  = await window.fetch(`/api/suppliers/${id}/ledger`)
+      const res  = await tenantFetch(`/api/suppliers/${id}/ledger`)
+      if (!res.ok) throw new Error('Failed to load ledger')
       const data = await res.json()
       setLedgerData(data)
     } catch { /* ignore */ }
@@ -77,16 +81,19 @@ export default function SupplierDetailPage({
   useEffect(() => {
     loadSupplier()
     loadLedger()
-  }, [id])
+  }, [id, tenantFetch])
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()

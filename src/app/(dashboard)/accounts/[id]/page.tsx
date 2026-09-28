@@ -11,6 +11,7 @@ import { formatPKR, formatDate } from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface StatementEntry {
   id:              string
@@ -43,6 +44,7 @@ export default function AccountDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { permissions } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { id } = use(params)
 
   const [account,         setAccount]         = useState<BankAccountBalance | null>(null)
@@ -53,7 +55,8 @@ export default function AccountDetailPage({
   async function loadAccount() {
     setLoadingAccount(true)
     try {
-      const res  = await window.fetch(`/api/accounts/${id}`)
+      const res  = await tenantFetch(`/api/accounts/${id}`)
+      if (!res.ok) throw new Error('Failed to load account')
       const data = await res.json()
       setAccount(data)
     } catch { /* ignore */ }
@@ -63,7 +66,8 @@ export default function AccountDetailPage({
   async function loadStatement() {
     setLoadingStatement(true)
     try {
-      const res  = await window.fetch(`/api/accounts/${id}/statement`)
+      const res  = await tenantFetch(`/api/accounts/${id}/statement`)
+      if (!res.ok) throw new Error('Failed to load statement')
       const data = await res.json()
       setStatementData(data)
     } catch { /* ignore */ }
@@ -73,7 +77,7 @@ export default function AccountDetailPage({
   useEffect(() => {
     loadAccount()
     loadStatement()
-  }, [id])
+  }, [id, tenantFetch])
 
   const balance = statementData?.summary.closing_balance ?? 0
 

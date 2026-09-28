@@ -12,6 +12,7 @@ import PurchaseItemRow, {
 import { SkeletonList } from '@/components/ui/skeleton'
 import { todayString, formatPKR, paymentStatusLabel } from '@/lib/utils'
 import type { Purchase } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): PurchaseItemDraft {
   return {
@@ -37,6 +38,7 @@ export default function EditPurchasePage() {
   const router = useRouter()
   const params = useParams()
   const purchaseId = params.id as string
+  const tenantFetch = useTenantFetch()
 
   const { suppliers } = useSuppliers()
   const { categories } = useEggCategories()
@@ -63,7 +65,7 @@ export default function EditPurchasePage() {
     setLoading(true)
     setLoadError(null)
 
-    window.fetch(`/api/purchases/${purchaseId}`)
+    tenantFetch(`/api/purchases/${purchaseId}`)
       .then(async r => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? 'Failed to load purchase')
@@ -95,7 +97,7 @@ export default function EditPurchasePage() {
         )
       })
       .finally(() => setLoading(false))
-  }, [purchaseId])
+  }, [purchaseId, tenantFetch])
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<PurchaseItemDraft>) => {
