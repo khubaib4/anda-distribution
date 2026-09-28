@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { validatePurchaseEditStockAvailability } from '@/lib/stock-availability'
 
 const PURCHASE_SELECT = `
@@ -76,17 +75,28 @@ export async function PATCH(
 
   const body = await request.json()
 
+  const paymentFields = [
+    'payment_status',
+    'amount_paid_paisa',
+    'payment_method',
+    'bank_account_id',
+    'paid_by',
+    'paid_by_partner_id',
+    'paid_by_partner_source',
+  ]
+  if (paymentFields.some(field => Object.prototype.hasOwnProperty.call(body, field))) {
+    return NextResponse.json(
+      { error: 'Purchase payment status is managed by supplier payments. Record payments from the supplier profile.' },
+      { status: 400 },
+    )
+  }
+
   const {
     supplier_id,
     supplier_name,
     purchase_date,
     notes,
-    payment_status,
-    amount_paid_paisa,
     items,
-    paid_by,
-    paid_by_partner_id,
-    paid_by_partner_source,
   } = body
 
   const { data: existing, error: fetchError } = await supabase
@@ -95,6 +105,10 @@ export async function PATCH(
       id,
       invoice_number,
       purchase_date,
+      supplier_id,
+      supplier_name_snapshot,
+      payment_status,
+      amount_paid_paisa,
       paid_by,
       paid_by_partner_id,
       paid_by_partner_source
@@ -105,6 +119,56 @@ export async function PATCH(
 
   if (fetchError || !existing) {
     return NextResponse.json({ error: 'Purchase not found' }, { status: 404 })
+  }
+
+  const hasPaymentHistory =
+    existing.payment_status !== 'unpaid' ||
+    (existing.amount_paid_paisa ?? 0) !== 0 ||
+    existing.paid_by === 'partner' ||
+    existing.paid_by_partner_id !== null ||
+    existing.paid_by_partner_source !== null
+
+  if (supplier_id !== undefined) {
+    if (supplier_id !== null && supplier_id !== '' && typeof supplier_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid supplier' }, { status: 400 })
+    }
+
+    const nextSupplierId = supplier_id || null
+    if (nextSupplierId !== existing.supplier_id && hasPaymentHistory) {
+      return NextResponse.json(
+        { error: 'Cannot change the supplier on a purchase with payment or partner settlement history.' },
+        { status: 409 },
+      )
+    }
+
+    if (nextSupplierId) {
+      const { data: supplier, error: supplierError } = await supabase
+        .from('suppliers')
+        .select('id')
+        .eq('id', nextSupplierId)
+        .eq('tenant_id', writeTenantId)
+        .maybeSingle()
+
+      if (supplierError) {
+        return NextResponse.json({ error: supplierError.message }, { status: 500 })
+      }
+      if (!supplier) {
+        return NextResponse.json({ error: 'Supplier not found' }, { status: 400 })
+      }
+    }
+  }
+
+  if (
+    existing.supplier_id === null &&
+    (supplier_id === undefined || supplier_id === null || supplier_id === '') &&
+    supplier_name !== undefined &&
+    (supplier_name || null) !== existing.supplier_name_snapshot &&
+    hasPaymentHistory
+  ) {
+    return NextResponse.json(
+      { error: 'Cannot change the supplier on a purchase with payment or partner settlement history.' },
+      { status: 409 },
+    )
   }
 
   if (items !== undefined) {
@@ -164,21 +228,6 @@ export async function PATCH(
   if (supplier_name     !== undefined) updates.supplier_name_snapshot = supplier_name || null
   if (purchase_date     !== undefined) updates.purchase_date          = purchase_date
   if (notes             !== undefined) updates.notes                  = notes || null
-  if (payment_status    !== undefined) updates.payment_status         = payment_status
-  if (amount_paid_paisa !== undefined) updates.amount_paid_paisa     = amount_paid_paisa
-
-  if (paid_by !== undefined) {
-    const paidBy = paid_by === 'partner' ? 'partner' : 'business'
-    if (paidBy === 'partner' && !paid_by_partner_id) {
-      return NextResponse.json(
-        { error: 'Partner is required when paid by partner' },
-        { status: 400 },
-      )
-    }
-    updates.paid_by                = paidBy
-    updates.paid_by_partner_id     = paidBy === 'partner' ? paid_by_partner_id : null
-    updates.paid_by_partner_source = paidBy === 'partner' ? paid_by_partner_source : null
-  }
 
   const { error: updateError } = await supabase
     .from('purchases')
@@ -276,72 +325,6 @@ export async function PATCH(
         sum + item.quantity_trays * item.price_per_tray_paisa,
       0
     ),
-  }
-
-  const admin = createAdminClient()
-  const capitalNotes = `Paid purchase: ${invoiceNumber}`
-  const finalPaidBy = data.paid_by ?? 'business'
-
-  if (finalPaidBy !== 'partner') {
-    await admin
-      .from('capital_transactions')
-      .delete()
-      .eq('tenant_id', writeTenantId)
-      .eq('notes', capitalNotes)
-  } else if (data.paid_by_partner_id) {
-    const partnerSource = data.paid_by_partner_source
-    const capitalFields: Record<string, unknown> = {
-      amount_paisa:     enriched.total_paisa,
-      transaction_date: data.purchase_date,
-      updated_at:       new Date().toISOString(),
-    }
-
-    if (partnerSource === 'partner') {
-      capitalFields.partner_id         = null
-      capitalFields.partner_profile_id = data.paid_by_partner_id
-    } else {
-      capitalFields.partner_id         = data.paid_by_partner_id
-      capitalFields.partner_profile_id = null
-    }
-
-    const { data: existingCapital } = await admin
-      .from('capital_transactions')
-      .select('id')
-      .eq('tenant_id', writeTenantId)
-      .eq('notes', capitalNotes)
-      .maybeSingle()
-
-    if (existingCapital) {
-      const { error: capitalError } = await admin
-        .from('capital_transactions')
-        .update(capitalFields)
-        .eq('id', existingCapital.id)
-
-      if (capitalError) {
-        return NextResponse.json(
-          { error: `Purchase saved but capital update failed: ${capitalError.message}` },
-          { status: 500 },
-        )
-      }
-    } else {
-      const { error: capitalError } = await admin
-        .from('capital_transactions')
-        .insert({
-          tenant_id:  writeTenantId,
-          type:       'contribution',
-          notes:      capitalNotes,
-          reference:  null,
-          created_by: user?.id || null,
-          ...capitalFields,
-        })
-
-      if (capitalError) {
-        return NextResponse.json(
-          { error: `Purchase saved but capital entry failed: ${capitalError.message}` },
-          { status: 500 },
-        )
-      }
-    }
   }
 
   const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])

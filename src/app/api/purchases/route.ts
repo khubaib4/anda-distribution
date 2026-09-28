@@ -81,9 +81,30 @@ export async function POST(request: Request) {
     amount_paid_paisa,
     items,
     paid_by,
-    paid_by_partner_id,
-    paid_by_partner_source,
   } = body
+
+  if (
+    (payment_status !== undefined && payment_status !== 'unpaid') ||
+    (amount_paid_paisa !== undefined && amount_paid_paisa !== 0) ||
+    Object.prototype.hasOwnProperty.call(body, 'payment_method') ||
+    Object.prototype.hasOwnProperty.call(body, 'bank_account_id')
+  ) {
+    return NextResponse.json(
+      { error: 'New purchases must be unpaid. Record payments from the supplier profile.' },
+      { status: 400 },
+    )
+  }
+
+  if (
+    paid_by === 'partner' ||
+    Object.prototype.hasOwnProperty.call(body, 'paid_by_partner_id') ||
+    Object.prototype.hasOwnProperty.call(body, 'paid_by_partner_source')
+  ) {
+    return NextResponse.json(
+      { error: 'Partner-paid supplier settlement is temporarily unavailable until supplier payment linking is enabled.' },
+      { status: 400 },
+    )
+  }
 
   if (!purchase_date) {
     return NextResponse.json(
@@ -106,13 +127,23 @@ export async function POST(request: Request) {
     }
   }
 
-  const paidBy = paid_by === 'partner' ? 'partner' : 'business'
+  if (supplier_id) {
+    if (typeof supplier_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid supplier' }, { status: 400 })
+    }
+    const { data: supplier, error: supplierError } = await supabase
+      .from('suppliers')
+      .select('id')
+      .eq('id', supplier_id)
+      .eq('tenant_id', writeTenantId)
+      .maybeSingle()
 
-  if (paidBy === 'partner' && !paid_by_partner_id) {
-    return NextResponse.json(
-      { error: 'Partner is required when paid by partner' },
-      { status: 400 },
-    )
+    if (supplierError) {
+      return NextResponse.json({ error: supplierError.message }, { status: 500 })
+    }
+    if (!supplier) {
+      return NextResponse.json({ error: 'Supplier not found' }, { status: 400 })
+    }
   }
 
   const { count, error: countError } = await supabase
@@ -129,12 +160,6 @@ export async function POST(request: Request) {
 
   const invoice_number = `PUR-${String((count ?? 0) + 1).padStart(4, '0')}`
 
-  const totalPaisa = items.reduce(
-    (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
-      sum + item.quantity_trays * item.price_per_tray_paisa,
-    0,
-  )
-
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
     .insert({
@@ -144,11 +169,11 @@ export async function POST(request: Request) {
       purchase_date,
       invoice_number,
       notes:                  notes          || null,
-      payment_status:         payment_status || 'unpaid',
-      amount_paid_paisa:      amount_paid_paisa || 0,
-      paid_by:                paidBy,
-      paid_by_partner_id:     paidBy === 'partner' ? paid_by_partner_id : null,
-      paid_by_partner_source: paidBy === 'partner' ? paid_by_partner_source : null,
+      payment_status:         'unpaid',
+      amount_paid_paisa:      0,
+      paid_by:                'business',
+      paid_by_partner_id:     null,
+      paid_by_partner_source: null,
       created_by:             user?.id       || null,
     })
     .select()
@@ -209,37 +234,6 @@ export async function POST(request: Request) {
       { error: movementsError.message },
       { status: 500 }
     )
-  }
-
-  if (paidBy === 'partner' && paid_by_partner_id) {
-    const capitalInsert: Record<string, unknown> = {
-      tenant_id:        writeTenantId,
-      type:             'contribution',
-      amount_paisa:     totalPaisa,
-      transaction_date: purchase_date,
-      notes:            `Paid purchase: ${invoice_number}`,
-      reference:        null,
-      created_by:       user?.id || null,
-    }
-
-    if (paid_by_partner_source === 'partner') {
-      capitalInsert.partner_id         = null
-      capitalInsert.partner_profile_id = paid_by_partner_id
-    } else {
-      capitalInsert.partner_id         = paid_by_partner_id
-      capitalInsert.partner_profile_id = null
-    }
-
-    const { error: capitalError } = await supabase
-      .from('capital_transactions')
-      .insert(capitalInsert)
-
-    if (capitalError) {
-      return NextResponse.json(
-        { error: `Purchase saved but capital entry failed: ${capitalError.message}` },
-        { status: 500 },
-      )
-    }
   }
 
   return NextResponse.json(purchase, { status: 201 })

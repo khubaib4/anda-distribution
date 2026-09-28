@@ -10,8 +10,8 @@ import PurchaseItemRow, {
   type PurchaseItemDraft,
 } from '@/components/purchases/purchase-item-row'
 import { SkeletonList } from '@/components/ui/skeleton'
-import { todayString, formatPKR } from '@/lib/utils'
-import type { PartnerOption, Purchase } from '@/types'
+import { todayString, formatPKR, paymentStatusLabel } from '@/lib/utils'
+import type { Purchase } from '@/types'
 
 function newItem(): PurchaseItemDraft {
   return {
@@ -48,26 +48,16 @@ export default function EditPurchasePage() {
   const [supplierId,     setSupplierId]     = useState('')
   const [supplierName,   setSupplierName]   = useState('')
   const [purchaseDate,   setPurchaseDate]   = useState(todayString())
-  const [paymentStatus,  setPaymentStatus]  = useState<'paid' | 'partial' | 'unpaid'>('unpaid')
-  const [amountPaid,     setAmountPaid]     = useState('')
+  const [paymentStatus,  setPaymentStatus]  = useState<Purchase['payment_status']>('unpaid')
+  const [amountPaidPaisa, setAmountPaidPaisa] = useState(0)
   const [notes,          setNotes]          = useState('')
   const [paidBy,         setPaidBy]         = useState<'business' | 'partner'>('business')
-  const [paidByPartnerId, setPaidByPartnerId] = useState('')
-  const [paidByPartnerSource, setPaidByPartnerSource] =
-    useState<'profile' | 'partner'>('profile')
-  const [partners,       setPartners]       = useState<PartnerOption[]>([])
+  const [paidByPartnerName, setPaidByPartnerName] = useState<string | null>(null)
 
   const [items, setItems] = useState<PurchaseItemDraft[]>([newItem()])
 
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
-
-  useEffect(() => {
-    window.fetch('/api/partners')
-      .then(r => r.json())
-      .then((data: PartnerOption[]) => setPartners(data))
-      .catch(console.error)
-  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -89,17 +79,10 @@ export default function EditPurchasePage() {
         )
         setPurchaseDate(purchase.purchase_date)
         setPaymentStatus(purchase.payment_status)
-        setAmountPaid(
-          purchase.amount_paid_paisa
-            ? String(purchase.amount_paid_paisa / 100)
-            : '',
-        )
+        setAmountPaidPaisa(purchase.amount_paid_paisa ?? 0)
         setNotes(purchase.notes ?? '')
         setPaidBy(purchase.paid_by === 'partner' ? 'partner' : 'business')
-        setPaidByPartnerId(purchase.paid_by_partner_id ?? '')
-        setPaidByPartnerSource(
-          purchase.paid_by_partner_source === 'partner' ? 'partner' : 'profile',
-        )
+        setPaidByPartnerName(purchase.paid_by_partner_name ?? null)
         setItems(
           purchase.items && purchase.items.length > 0
             ? purchaseToItems(purchase)
@@ -113,10 +96,6 @@ export default function EditPurchasePage() {
       })
       .finally(() => setLoading(false))
   }, [purchaseId])
-
-  const selectedPaidByPartner = partners.find(
-    p => p.id === paidByPartnerId && p.source === paidByPartnerSource,
-  )
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<PurchaseItemDraft>) => {
@@ -163,11 +142,6 @@ export default function EditPurchasePage() {
       }
     }
 
-    if (paidBy === 'partner' && !paidByPartnerId) {
-      setError('Please select a partner')
-      return
-    }
-
     setSaving(true)
 
     try {
@@ -178,22 +152,11 @@ export default function EditPurchasePage() {
         supplier_name:     selectedSupplier?.name || supplierName || null,
         purchase_date:     purchaseDate,
         notes:             notes || null,
-        payment_status:    paymentStatus,
-        amount_paid_paisa: paymentStatus === 'paid'
-          ? grandTotalPaisa
-          : Math.round(parseFloat(amountPaid || '0') * 100),
         items: items.map(item => ({
           egg_category_id:      item.egg_category_id,
           quantity_trays:       item.quantity_peti * 12 + item.quantity_tray,
           price_per_tray_paisa: item.price_per_tray_paisa,
         })),
-        paid_by: paidBy,
-        ...(paidBy === 'partner'
-          ? {
-              paid_by_partner_id:     paidByPartnerId,
-              paid_by_partner_source: paidByPartnerSource,
-            }
-          : {}),
       }
 
       const res = await fetch(`/api/purchases/${purchaseId}`, {
@@ -360,126 +323,20 @@ export default function EditPurchasePage() {
           )}
         </div>
 
-        <div className="card p-4 space-y-4">
+        <div className="card p-4 space-y-2">
           <p className="section-title">Payment</p>
-
-          <div className="form-group">
-            <label className="label">Payment status</label>
-            <select
-              className="select"
-              value={paymentStatus}
-              onChange={e =>
-                setPaymentStatus(e.target.value as 'paid' | 'partial' | 'unpaid')
-              }
-            >
-              <option value="unpaid">Unpaid</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-            </select>
-          </div>
-
-          {paymentStatus === 'partial' && (
-            <div className="form-group">
-              <label className="label">Amount paid (₨)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="input"
-                placeholder="0.00"
-                value={amountPaid}
-                onChange={e => setAmountPaid(e.target.value)}
-              />
-            </div>
-          )}
-
-          {paymentStatus === 'paid' && grandTotalPaisa > 0 && (
-            <p className="text-sm text-success">
-              Full amount {formatPKR(grandTotalPaisa)} will be marked as paid
+          <p className="text-sm text-stone-600">
+            Status: {paymentStatusLabel(paymentStatus)} · Paid: {formatPKR(amountPaidPaisa)}
+          </p>
+          {paidBy === 'partner' && (
+            <p className="text-sm text-brand-600">
+              Paid by {paidByPartnerName ?? 'partner'}
             </p>
           )}
-
-          <div className="form-group">
-            <label className="label">Paid by</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPaidBy('business')
-                  setPaidByPartnerId('')
-                  setPaidByPartnerSource('profile')
-                }}
-                className={[
-                  'py-2.5 rounded-lg border text-sm font-medium transition-colors',
-                  paidBy === 'business'
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-stone-200 bg-white text-stone-500 hover:bg-stone-50',
-                ].join(' ')}
-              >
-                Business
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaidBy('partner')}
-                className={[
-                  'py-2.5 rounded-lg border text-sm font-medium transition-colors',
-                  paidBy === 'partner'
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-stone-200 bg-white text-stone-500 hover:bg-stone-50',
-                ].join(' ')}
-              >
-                Partner
-              </button>
-            </div>
-          </div>
-
-          {paidBy === 'partner' && (
-            <div className="space-y-3">
-              <div className="form-group">
-                <label className="label">
-                  Partner <span className="text-danger">*</span>
-                </label>
-                <select
-                  className="select"
-                  value={
-                    paidByPartnerId
-                      ? `${paidByPartnerSource}:${paidByPartnerId}`
-                      : ''
-                  }
-                  onChange={e => {
-                    const value = e.target.value
-                    if (!value) {
-                      setPaidByPartnerId('')
-                      setPaidByPartnerSource('profile')
-                      return
-                    }
-                    const [source, id] = value.split(':')
-                    setPaidByPartnerId(id)
-                    setPaidByPartnerSource(
-                      source === 'partner' ? 'partner' : 'profile',
-                    )
-                  }}
-                >
-                  <option value="">Select partner…</option>
-                  {partners.map(p => (
-                    <option
-                      key={`${p.source}:${p.id}`}
-                      value={`${p.source}:${p.id}`}
-                    >
-                      {p.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedPaidByPartner && grandTotalPaisa > 0 && (
-                <p className="text-xs text-brand-700 bg-brand-50 border
-                              border-brand-200 rounded px-3 py-2">
-                  Paid by {selectedPaidByPartner.full_name}
-                </p>
-              )}
-            </div>
-          )}
+          <p className="text-sm text-stone-600">
+            Record supplier payments from the supplier profile. Purchase status
+            will update automatically once supplier allocation is enabled.
+          </p>
         </div>
 
         <div className="card p-4">

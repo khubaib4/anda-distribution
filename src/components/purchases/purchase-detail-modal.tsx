@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { X, Pencil } from 'lucide-react'
 import {
   formatPKR,
@@ -21,59 +22,21 @@ interface Props {
 export default function PurchaseDetailModal({
   purchaseId,
   onClose,
-  onUpdated,
 }: Props) {
   const router = useRouter()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
   const [error,    setError]    = useState<string | null>(null)
-
-  // Payment update state
-  const [editingPayment,  setEditingPayment]  = useState(false)
-  const [paymentStatus,   setPaymentStatus]   = useState<'paid'|'partial'|'unpaid'>('unpaid')
-  const [amountPaidInput, setAmountPaidInput] = useState('')
 
   useEffect(() => {
     window.fetch(`/api/purchases/${purchaseId}`)
       .then(r => r.json())
       .then(data => {
         setPurchase(data)
-        setPaymentStatus(data.payment_status)
-        setAmountPaidInput(
-          data.amount_paid_paisa ? String(data.amount_paid_paisa / 100) : ''
-        )
       })
       .catch(() => setError('Failed to load purchase'))
       .finally(() => setLoading(false))
   }, [purchaseId])
-
-  async function handleSavePayment() {
-    if (!purchase) return
-    setSaving(true)
-    setError(null)
-
-    const amount_paid_paisa =
-      paymentStatus === 'paid'
-        ? purchase.total_paisa ?? 0
-        : Math.round(parseFloat(amountPaidInput || '0') * 100)
-
-    const res = await window.fetch(`/api/purchases/${purchaseId}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ payment_status: paymentStatus, amount_paid_paisa }),
-    })
-
-    if (res.ok) {
-      const updated = await res.json()
-      setPurchase(prev => prev ? { ...prev, ...updated } : null)
-      setEditingPayment(false)
-      onUpdated()
-    } else {
-      setError('Failed to update payment')
-    }
-    setSaving(false)
-  }
 
   const totalPaisa    = purchase?.total_paisa ?? 0
   const paidPaisa     = purchase?.amount_paid_paisa ?? 0
@@ -216,79 +179,26 @@ export default function PurchaseDetailModal({
 
               {/* Payment status */}
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0">Payment</p>
-                  {!editingPayment && (
-                    <button
-                      onClick={() => setEditingPayment(true)}
-                      className="btn-ghost text-xs py-1 px-2"
-                    >
-                      Update
-                    </button>
+                <p className="section-title mb-3">Payment</p>
+                <div className="space-y-2">
+                  <span className={paymentStatusClass(purchase.payment_status)}>
+                    {paymentStatusLabel(purchase.payment_status)}
+                  </span>
+                  {purchase.paid_by === 'partner' && purchase.paid_by_partner_name && (
+                    <p className="text-sm text-brand-600">
+                      Paid by {purchase.paid_by_partner_name}
+                    </p>
+                  )}
+                  <p className="text-xs text-stone-500">
+                    Record supplier payments from the supplier profile. Purchase status
+                    will update automatically once supplier allocation is enabled.
+                  </p>
+                  {purchase.supplier_id && (
+                    <Link href={`/suppliers/${purchase.supplier_id}`} className="text-sm text-brand-600 hover:underline">
+                      Open supplier profile
+                    </Link>
                   )}
                 </div>
-
-                {!editingPayment ? (
-                  <div className="space-y-2">
-                    <span className={paymentStatusClass(purchase.payment_status)}>
-                      {paymentStatusLabel(purchase.payment_status)}
-                    </span>
-                    {purchase.paid_by === 'partner' && purchase.paid_by_partner_name && (
-                      <p className="text-sm text-brand-600">
-                        Paid by {purchase.paid_by_partner_name}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="form-group">
-                      <label className="label">Payment status</label>
-                      <select
-                        className="select"
-                        value={paymentStatus}
-                        onChange={e =>
-                          setPaymentStatus(
-                            e.target.value as 'paid' | 'partial' | 'unpaid'
-                          )
-                        }
-                      >
-                        <option value="unpaid">Unpaid</option>
-                        <option value="partial">Partial</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                    </div>
-
-                    {paymentStatus === 'partial' && (
-                      <div className="form-group">
-                        <label className="label">Amount paid (₨)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          className="input"
-                          value={amountPaidInput}
-                          onChange={e => setAmountPaidInput(e.target.value)}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingPayment(false)}
-                        className="btn-secondary flex-1"
-                        disabled={saving}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSavePayment}
-                        className="btn-primary flex-1"
-                        disabled={saving}
-                      >
-                        {saving ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Notes */}
