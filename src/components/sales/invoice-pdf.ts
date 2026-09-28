@@ -6,6 +6,7 @@ import {
   paymentStatusLabel,
   effectiveItemLineTotalPaisa,
   computeSaleSubtotalPaisa,
+  computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
 } from '@/lib/utils'
 import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
@@ -27,19 +28,17 @@ function preDiscountSubtotalPaisa(items: SaleItem[]): number {
 }
 
 function itemDiscountsPaisa(items: SaleItem[]): number {
-  return items.reduce((sum, item) => {
-    const discounted = item.discounted_price_paisa ?? 0
-    if (discounted > 0 && discounted !== item.price_per_tray_paisa) {
-      return sum +
-        (item.price_per_tray_paisa - discounted) * item.quantity_trays
-    }
-    return sum
-  }, 0)
+  return items.reduce(
+    (sum, item) => sum + (
+      item.quantity_trays * item.price_per_tray_paisa
+      - effectiveItemLineTotalPaisa(item)
+    ),
+    0,
+  )
 }
 
 function itemHasDiscount(item: SaleItem): boolean {
-  const discounted = item.discounted_price_paisa ?? 0
-  return discounted > 0 && discounted !== item.price_per_tray_paisa
+  return item.discount_type === 'percentage' || item.discount_type === 'fixed'
 }
 
 function itemDiscountNote(item: SaleItem): string | null {
@@ -49,8 +48,7 @@ function itemDiscountNote(item: SaleItem): string | null {
     return `Discount: ${item.discount_value}%`
   }
 
-  const perPetiRupees =
-    ((item.price_per_tray_paisa - item.discounted_price_paisa) * 12) / 100
+  const perPetiRupees = item.discount_value ?? 0
   return `Discount: Rs. ${perPetiRupees.toLocaleString('en-IN', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -166,10 +164,10 @@ export async function generateInvoicePDF(
 
   const preDiscountSubtotal = preDiscountSubtotalPaisa(items)
   const itemDiscounts       = itemDiscountsPaisa(items)
-  const overallDiscount     = sale.discount_amount_paisa ?? 0
-  const totalDiscount       = itemDiscounts + overallDiscount
   const afterItemDiscounts  = computeSaleSubtotalPaisa(items)
-  const total               = sale.total_paisa ?? afterItemDiscounts - overallDiscount
+  const total               = computeSaleTotalPaisa(sale)
+  const overallDiscount     = afterItemDiscounts - total
+  const totalDiscount       = itemDiscounts + overallDiscount
   const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
     payment_status:    sale.payment_status,
     amount_paid_paisa: sale.amount_paid_paisa,

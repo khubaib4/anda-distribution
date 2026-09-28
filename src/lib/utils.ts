@@ -390,7 +390,7 @@ export function computeSaleSubtotalPaisa(
 
 /** Discounted sale total — item discounts plus overall sale discount. */
 export function computeSaleTotalPaisa(sale: {
-  discount_amount_paisa?: number
+  discount_amount_paisa?: number | null
   items?: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
@@ -399,8 +399,12 @@ export function computeSaleTotalPaisa(sale: {
     discounted_price_paisa?: number | null
   }>
 }): number {
-  return computeSaleSubtotalPaisa(sale.items ?? [])
-    - (sale.discount_amount_paisa ?? 0)
+  const subtotal = computeSaleSubtotalPaisa(sale.items ?? [])
+  const effectiveDiscount = Math.min(
+    Math.max(0, sale.discount_amount_paisa ?? 0),
+    Math.max(0, subtotal),
+  )
+  return Math.max(0, subtotal - effectiveDiscount)
 }
 
 /** Customer balance sale total — same as computeSaleTotalPaisa. */

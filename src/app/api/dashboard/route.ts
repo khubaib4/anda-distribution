@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
-import { computeSaleSubtotalPaisa, computeSaleTotalPaisa } from '@/lib/utils'
+import { computeSaleTotalPaisa } from '@/lib/utils'
 
 const IN_TYPES = ['purchase_in', 'adjustment_in', 'opening_stock'] as const
 
@@ -33,6 +33,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa
         )
       `)
@@ -78,6 +80,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa
         )
       `),
@@ -171,6 +175,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa,
           cost_per_tray_paisa
         )
@@ -223,6 +229,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa
         )
       `)
@@ -240,7 +248,17 @@ export async function GET(request: Request) {
   const { data: overdueSales, error: overdueError } = await tenantEq(
     supabase
       .from('sales')
-      .select('id')
+      .select(`
+        amount_paid_paisa,
+        discount_amount_paisa,
+        items:sale_items(
+          quantity_trays,
+          price_per_tray_paisa,
+          discount_type,
+          discount_value,
+          discounted_price_paisa
+        )
+      `)
       .in('payment_status', ['unpaid', 'partial'])
       .not('due_date', 'is', null)
       .lt('due_date', today),
@@ -251,7 +269,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: overdueError.message }, { status: 500 })
   }
 
-  const overdueCount = overdueSales?.length ?? 0
+  const overdueCount = (overdueSales ?? []).filter(sale =>
+    Math.max(0, computeSaleTotalPaisa(sale) - (sale.amount_paid_paisa ?? 0)) > 0
+  ).length
 
   return NextResponse.json({
     today: {

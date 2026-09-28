@@ -363,9 +363,6 @@ export default function DashboardPage() {
               const totalTrays = sale.items.reduce(
                 (s, i) => s + i.quantity_trays, 0
               )
-              const totalPaisa = sale.items.reduce(
-                (s, i) => s + i.quantity_trays * i.price_per_tray_paisa, 0
-              )
               return (
                 <Link
                   key={sale.id}
@@ -384,7 +381,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <span className="amount text-sm font-medium text-stone-900">
-                      {formatPKR(totalPaisa)}
+                      {formatPKR(sale.total_paisa)}
                     </span>
                     <span className={paymentStatusClass(sale.payment_status)}>
                       {paymentStatusLabel(sale.payment_status)}

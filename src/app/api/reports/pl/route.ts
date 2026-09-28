@@ -1,11 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
-import { effectiveItemLineTotalPaisa } from '@/lib/utils'
+import { computeSaleTotalPaisa, effectiveItemLineTotalPaisa } from '@/lib/utils'
 
 type SaleItemRow = {
   quantity_trays: number
   price_per_tray_paisa: number
+  discount_type: 'percentage' | 'fixed' | null
+  discount_value: number | null
   discounted_price_paisa?: number
   cost_per_tray_paisa: number
   egg_category: { name: string } | { name: string }[] | null
@@ -44,6 +46,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa,
           cost_per_tray_paisa,
           egg_category:egg_categories(name)
@@ -91,29 +95,56 @@ export async function GET(request: Request) {
       totalCOGS   += cogs
     }
 
-    const overallDiscount = sale.discount_amount_paisa ?? 0
-    saleRevenue -= overallDiscount
+    const saleTotal = computeSaleTotalPaisa(sale)
+    const overallDiscount = saleRevenue - saleTotal
 
-    if (overallDiscount > 0 && saleRevenue + overallDiscount > 0) {
-      const preDiscountSaleRevenue = saleRevenue + overallDiscount
-      let allocated = 0
-      const categories = Object.entries(saleCategoryRevenue)
+    if (overallDiscount > 0 && saleRevenue > 0) {
+      if (!Number.isSafeInteger(saleRevenue) ||
+          !Number.isSafeInteger(overallDiscount) ||
+          overallDiscount > saleRevenue) {
+        throw new Error('Invalid sale amounts for category discount allocation')
+      }
 
-      categories.forEach(([catName, catRev], index) => {
-        const isLast = index === categories.length - 1
-        const share = isLast
-          ? overallDiscount - allocated
-          : Math.round(overallDiscount * (catRev / preDiscountSaleRevenue))
-        allocated += share
+      const categories = Object.entries(saleCategoryRevenue).sort(
+        ([nameA], [nameB]) => nameA.localeCompare(nameB),
+      )
+      let cumulativeRevenue = 0
+      let allocatedDiscount = 0
+
+      categories.forEach(([catName, catRev]) => {
+        if (!Number.isSafeInteger(catRev) || catRev < 0) {
+          throw new Error('Invalid category revenue for discount allocation')
+        }
+        cumulativeRevenue += catRev
+        if (!Number.isSafeInteger(cumulativeRevenue) || cumulativeRevenue > saleRevenue) {
+          throw new Error('Invalid cumulative revenue for discount allocation')
+        }
+
+        const exactTarget = BigInt(overallDiscount) * BigInt(cumulativeRevenue)
+          / BigInt(saleRevenue)
+        if (exactTarget > BigInt(overallDiscount) ||
+            exactTarget > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error('Category discount exceeds the supported paisa range')
+        }
+        const targetDiscount = Number(exactTarget)
+        const share = targetDiscount - allocatedDiscount
+        if (share < 0 || share > catRev) {
+          throw new Error('Invalid category discount share')
+        }
+        allocatedDiscount = targetDiscount
         categoryMap[catName].revenue_paisa += catRev - share
       })
+      if (cumulativeRevenue !== saleRevenue || allocatedDiscount !== overallDiscount ||
+          saleRevenue - allocatedDiscount !== saleTotal) {
+        throw new Error('Category discount allocation does not match sale total')
+      }
     } else {
       for (const [catName, catRev] of Object.entries(saleCategoryRevenue)) {
         categoryMap[catName].revenue_paisa += catRev
       }
     }
 
-    totalRevenue += saleRevenue
+    totalRevenue += saleTotal
   }
 
   const grossProfit = totalRevenue - totalCOGS

@@ -1,15 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
-
-function saleTotalPaisa(
-  items: Array<{ quantity_trays: number; price_per_tray_paisa: number }>,
-): number {
-  return (items ?? []).reduce(
-    (sum, i) => sum + i.quantity_trays * i.price_per_tray_paisa,
-    0,
-  )
-}
+import { computeSaleTotalPaisa } from '@/lib/utils'
 
 function daysOverdue(dueDate: string, today: string): number {
   const dueMs   = new Date(`${dueDate}T00:00:00`).getTime()
@@ -25,11 +17,18 @@ function mapOverdueSale(
     invoice_number: string | null
     payment_status: string
     customer_id: string
-    amount_paid_paisa: number
+    amount_paid_paisa: number | null
+    discount_amount_paisa: number | null
     customer: { contact_name: string; business_name: string | null; phone: string | null }
       | { contact_name: string; business_name: string | null; phone: string | null }[]
       | null
-    items: Array<{ quantity_trays: number; price_per_tray_paisa: number }>
+    items: Array<{
+      quantity_trays: number
+      price_per_tray_paisa: number
+      discount_type: 'percentage' | 'fixed' | null
+      discount_value: number | null
+      discounted_price_paisa: number | null
+    }>
   },
   today: string,
   days_overdue: number,
@@ -37,7 +36,8 @@ function mapOverdueSale(
   const customer = Array.isArray(sale.customer)
     ? sale.customer[0]
     : sale.customer
-  const total_paisa = saleTotalPaisa(sale.items ?? [])
+  const total_paisa = computeSaleTotalPaisa(sale)
+  const duePaisa = Math.max(0, total_paisa - (sale.amount_paid_paisa ?? 0))
 
   return {
     sale_id:        sale.id,
@@ -50,7 +50,7 @@ function mapOverdueSale(
     contact_name:   customer?.contact_name ?? '—',
     business_name:  customer?.business_name ?? null,
     phone:          customer?.phone ?? null,
-    balance_paisa:  total_paisa - (sale.amount_paid_paisa ?? 0),
+    balance_paisa:  duePaisa,
   }
 }
 
@@ -70,11 +70,18 @@ export async function GET(request: Request) {
     payment_status,
     customer_id,
     amount_paid_paisa,
+    discount_amount_paisa,
     customer:customers(contact_name, business_name, phone),
-    items:sale_items(quantity_trays, price_per_tray_paisa)
+    items:sale_items(
+      quantity_trays,
+      price_per_tray_paisa,
+      discount_type,
+      discount_value,
+      discounted_price_paisa
+    )
   `
 
-  let overdueQuery = tenantEq(
+  const overdueQuery = tenantEq(
     supabase
       .from('sales')
       .select(saleSelect)
@@ -84,7 +91,7 @@ export async function GET(request: Request) {
     tenantId,
   ).order('due_date', { ascending: true })
 
-  let dueTodayQuery = tenantEq(
+  const dueTodayQuery = tenantEq(
     supabase
       .from('sales')
       .select(saleSelect)
@@ -107,11 +114,12 @@ export async function GET(request: Request) {
 
   const overdue = (overdueSales ?? [])
     .map(sale => mapOverdueSale(sale, today, daysOverdue(sale.due_date, today)))
+    .filter(sale => sale.balance_paisa > 0)
     .sort((a, b) => b.days_overdue - a.days_overdue)
 
-  const due_today = (dueTodaySales ?? []).map(sale =>
-    mapOverdueSale(sale, today, 0),
-  )
+  const due_today = (dueTodaySales ?? [])
+    .map(sale => mapOverdueSale(sale, today, 0))
+    .filter(sale => sale.balance_paisa > 0)
 
   const overdueCount  = overdue.length
   const dueTodayCount = due_today.length

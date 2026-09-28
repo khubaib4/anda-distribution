@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   computeDiscountedPricePaisa,
@@ -43,21 +43,20 @@ export default function SaleItemRow({
   onRemove,
   canRemove,
 }: Props) {
-  const [discountOn, setDiscountOn] = useState(
-    item.discount_type !== null && item.discount_value > 0,
-  )
+  const discountOn = item.discount_type === 'percentage' || item.discount_type === 'fixed'
   const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
     petiPriceStringFromTrayPaisa(item.price_per_tray_paisa),
   )
 
-  useEffect(() => {
-    setPricePerPetiInput(petiPriceStringFromTrayPaisa(item.price_per_tray_paisa))
-  }, [item.id])
-
   const totalTrays = item.quantity_peti * 12 + item.quantity_tray
   const originalLineTotal = totalTrays * item.price_per_tray_paisa
   const discountedLineTotal = effectiveItemLineTotalPaisa(item)
-  const hasDiscount = (item.discounted_price_paisa ?? 0) > 0
+  const lineSavingPaisa = computeLineDiscountSavingPaisa(
+    totalTrays,
+    item.price_per_tray_paisa,
+    item.discount_type,
+    item.discount_value,
+  )
 
   function applyDiscount(
     type: 'percentage' | 'fixed' | null,
@@ -83,7 +82,6 @@ export default function SaleItemRow({
   }
 
   function toggleDiscount(on: boolean) {
-    setDiscountOn(on)
     if (!on) {
       applyDiscount(null, 0)
     } else {
@@ -92,15 +90,8 @@ export default function SaleItemRow({
   }
 
   function savingMessage(): string | null {
-    if (!hasDiscount) return null
-    const totalDiscountPaisa = computeLineDiscountSavingPaisa(
-      totalTrays,
-      item.price_per_tray_paisa,
-      item.discount_type,
-      item.discount_value,
-    )
-    if (totalDiscountPaisa <= 0) return null
-    const totalDiscount = totalDiscountPaisa / 100
+    if (lineSavingPaisa <= 0) return null
+    const totalDiscount = lineSavingPaisa / 100
 
     if (item.discount_type === 'fixed') {
       const perPeti = parseFloat(String(item.discount_value))
@@ -304,7 +295,7 @@ export default function SaleItemRow({
             {item.quantity_peti > 0 && ` (${item.quantity_peti} peti)`}
           </span>
           <div className="text-right">
-            {hasDiscount && (
+            {lineSavingPaisa > 0 && (
               <p className="text-xs text-stone-400 line-through">
                 ₨ {formatRupees(originalLineTotal)}
               </p>

@@ -36,6 +36,8 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          discount_type,
+          discount_value,
           discounted_price_paisa
         )
       `),

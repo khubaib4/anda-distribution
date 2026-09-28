@@ -38,30 +38,14 @@ function newItem(): SaleItemDraft {
 
 function saleToItems(sale: Sale): SaleItemDraft[] {
   return (sale.items ?? []).map(item => {
-    const hasDiscount =
-      item.discounted_price_paisa > 0 &&
-      item.discounted_price_paisa !== item.price_per_tray_paisa
-
-    let discountValue = 0
-    if (hasDiscount) {
-      if (item.discount_type === 'fixed') {
-        const perTrayDiscountPaisa =
-          item.price_per_tray_paisa - item.discounted_price_paisa
-        discountValue =
-          Math.round((perTrayDiscountPaisa * 12) / 100 * 100) / 100
-      } else {
-        discountValue = item.discount_value ?? 0
-      }
-    }
-
     return {
       id:                   item.id,
       egg_category_id:      item.egg_category_id ?? item.egg_category?.id ?? '',
       quantity_peti:        Math.floor(item.quantity_trays / 12),
       quantity_tray:        item.quantity_trays % 12,
       price_per_tray_paisa: item.price_per_tray_paisa,
-      discount_type:        hasDiscount ? (item.discount_type ?? null) : null,
-      discount_value:       discountValue,
+      discount_type:        item.discount_type,
+      discount_value:       item.discount_value ?? 0,
       discounted_price_paisa: item.discounted_price_paisa ?? 0,
     }
   })
@@ -132,7 +116,7 @@ export default function EditSalePage() {
         setNotes(sale.notes ?? '')
 
         const hasSaleDiscount =
-          !!sale.discount_type && (sale.discount_amount_paisa ?? 0) > 0
+          sale.discount_type === 'percentage' || sale.discount_type === 'fixed'
         setSaleDiscountOn(hasSaleDiscount)
         if (hasSaleDiscount && sale.discount_type) {
           setSaleDiscountType(sale.discount_type)
@@ -289,7 +273,6 @@ export default function EditSalePage() {
           price_per_tray_paisa:   item.price_per_tray_paisa,
           discount_type:          item.discount_type,
           discount_value:         item.discount_value,
-          discounted_price_paisa: item.discounted_price_paisa,
         })),
       }
 
@@ -454,7 +437,7 @@ export default function EditSalePage() {
             Add another category
           </button>
 
-          {subtotalPaisa > 0 && (
+          {totalTrays > 0 && (
             <div className="pt-3 border-t border-stone-200 mt-2 space-y-1">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-stone-500">Subtotal</span>

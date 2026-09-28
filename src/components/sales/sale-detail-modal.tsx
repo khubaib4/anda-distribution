@@ -12,6 +12,8 @@ import {
   paymentStatusLabel,
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
+  computeSalePaymentBreakdown,
+  effectiveItemLineTotalPaisa,
   effectiveItemPricePaisa,
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
@@ -47,19 +49,15 @@ export default function SaleDetailModal({
       .finally(() => setLoading(false))
   }, [saleId])
 
-  const subtotalPaisa = sale?.subtotal_paisa
-    ?? computeSaleSubtotalPaisa(sale?.items ?? [])
-  const discountPaisa = sale?.discount_amount_paisa ?? 0
-  const totalPaisa = sale?.total_paisa
-    ?? computeSaleTotalPaisa(sale ?? { items: [] })
-  const paidPaisa = sale?.paid_paisa ?? (
-    sale?.payment_status === 'paid'
-      ? totalPaisa
-      : sale?.payment_status === 'partial'
-        ? (sale?.amount_paid_paisa ?? 0)
-        : 0
-  )
-  const remainingPaisa = sale?.remaining_paisa ?? (totalPaisa - paidPaisa)
+  const subtotalPaisa = computeSaleSubtotalPaisa(sale?.items ?? [])
+  const totalPaisa = computeSaleTotalPaisa(sale ?? { items: [] })
+  const discountPaisa = subtotalPaisa - totalPaisa
+  const { paid_paisa: paidPaisa, remaining_paisa: remainingPaisa } =
+    computeSalePaymentBreakdown({
+      payment_status: sale?.payment_status ?? 'unpaid',
+      amount_paid_paisa: sale?.amount_paid_paisa,
+      total_paisa: totalPaisa,
+    })
   const grossProfit = totalPaisa - (sale?.cogs_paisa ?? 0)
 
   return (
@@ -148,8 +146,11 @@ export default function SaleDetailModal({
                 <div className="space-y-2">
                   {(sale.items ?? []).map(item => {
                     const effectivePrice = effectiveItemPricePaisa(item)
-                    const total = item.quantity_trays * effectivePrice
-                    const hasDiscount = (item.discounted_price_paisa ?? 0) > 0
+                    const total = effectiveItemLineTotalPaisa(item)
+                    const hasDiscount =
+                      item.discount_type === 'percentage' || item.discount_type === 'fixed'
+                    const hasSaving = total < item.quantity_trays * item.price_per_tray_paisa
+                    const roundedUnitPrice = effectivePrice * item.quantity_trays !== total
                     return (
                       <div
                         key={item.id}
@@ -173,10 +174,15 @@ export default function SaleDetailModal({
                             {formatQty(item.quantity_trays)} ×{' '}
                             {hasDiscount ? (
                               <>
-                                <span className="line-through text-stone-400">
-                                  {formatPKR(item.price_per_tray_paisa)}
-                                </span>
-                                {' '}
+                                {hasSaving && (
+                                  <>
+                                    <span className="line-through text-stone-400">
+                                      {formatPKR(item.price_per_tray_paisa)}
+                                    </span>
+                                    {' '}
+                                  </>
+                                )}
+                                {roundedUnitPrice && '≈ '}
                                 {formatPKR(effectivePrice)}/tray
                               </>
                             ) : (
@@ -245,7 +251,7 @@ export default function SaleDetailModal({
                   <div className="flex justify-between text-sm pt-1">
                     <span className="text-danger font-medium">Unpaid</span>
                     <span className="amount text-danger font-medium">
-                      {formatPKR(totalPaisa)}
+                      {formatPKR(remainingPaisa)}
                     </span>
                   </div>
                 )}
