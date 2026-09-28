@@ -70,6 +70,20 @@ export async function POST(request: Request) {
     )
   }
 
+  const { data: customer, error: customerError } = await supabase
+    .from('customers')
+    .select('id')
+    .eq('id', customer_id)
+    .eq('tenant_id', writeTenantId)
+    .maybeSingle()
+
+  if (customerError) {
+    return NextResponse.json({ error: customerError.message }, { status: 500 })
+  }
+  if (!customer) {
+    return NextResponse.json({ error: 'Customer not found' }, { status: 400 })
+  }
+
   const { data, error } = await supabase
     .from('customer_payments')
     .insert({
