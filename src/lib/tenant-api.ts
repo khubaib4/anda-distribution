@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getTenantContext, type TenantContextResult } from '@/lib/tenant'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function apiUnauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -7,22 +10,45 @@ export function apiUnauthorized() {
 
 export type ApiAuthResult = {
   ctx:      TenantContextResult
-  tenantId: string | null
+  tenantId: string
 }
 
 export async function authorizeApi(
   request?: Request,
 ): Promise<ApiAuthResult | NextResponse> {
   const ctx = await getTenantContext()
-  if (!ctx || (!ctx.tenantId && !ctx.isSuperAdmin)) {
+  if (!ctx) {
     return apiUnauthorized()
   }
 
-  let tenantId: string | null = ctx.tenantId
-  if (ctx.isSuperAdmin && request) {
-    const scoped = new URL(request.url).searchParams.get('tenant_id')
-    if (scoped) tenantId = scoped
-    else if (!ctx.tenantId) tenantId = null
+  if (!ctx.isSuperAdmin) {
+    if (!ctx.tenantId) return apiUnauthorized()
+    return { ctx, tenantId: ctx.tenantId }
+  }
+
+  const searchParams = request ? new URL(request.url).searchParams : null
+  const tenantId = searchParams?.has('tenant_id')
+    ? searchParams.get('tenant_id')
+    : ctx.tenantId
+
+  if (!tenantId) {
+    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 })
+  }
+  if (!TENANT_ID_PATTERN.test(tenantId)) {
+    return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
+  }
+
+  const { data: tenant, error } = await createAdminClient()
+    .from('tenants')
+    .select('id')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  if (error) {
+    return NextResponse.json({ error: 'Unable to validate tenant_id' }, { status: 500 })
+  }
+  if (!tenant) {
+    return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
   }
 
   return { ctx, tenantId }
@@ -30,10 +56,10 @@ export async function authorizeApi(
 
 export function tenantEq<T>(
   query: T,
-  tenantId: string | null,
+  tenantId: string,
   column = 'tenant_id',
 ): T {
-  if (!tenantId) return query
+  if (!tenantId?.trim()) throw new Error('Tenant scope is required')
   return (query as { eq: (column: string, value: string) => T }).eq(column, tenantId)
 }
 
