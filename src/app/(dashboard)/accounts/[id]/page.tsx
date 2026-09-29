@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
   TrendingUp,
@@ -11,6 +11,7 @@ import { formatPKR, formatDate } from '@/lib/utils'
 import type { BankAccountBalance } from '@/types'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface StatementEntry {
   id:              string
@@ -43,6 +44,7 @@ export default function AccountDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { permissions } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { id } = use(params)
 
   const [account,         setAccount]         = useState<BankAccountBalance | null>(null)
@@ -53,7 +55,8 @@ export default function AccountDetailPage({
   async function loadAccount() {
     setLoadingAccount(true)
     try {
-      const res  = await window.fetch(`/api/accounts/${id}`)
+      const res  = await tenantFetch(`/api/accounts/${id}`)
+      if (!res.ok) throw new Error('Failed to load account')
       const data = await res.json()
       setAccount(data)
     } catch { /* ignore */ }
@@ -63,7 +66,8 @@ export default function AccountDetailPage({
   async function loadStatement() {
     setLoadingStatement(true)
     try {
-      const res  = await window.fetch(`/api/accounts/${id}/statement`)
+      const res  = await tenantFetch(`/api/accounts/${id}/statement`)
+      if (!res.ok) throw new Error('Failed to load statement')
       const data = await res.json()
       setStatementData(data)
     } catch { /* ignore */ }
@@ -73,7 +77,7 @@ export default function AccountDetailPage({
   useEffect(() => {
     loadAccount()
     loadStatement()
-  }, [id])
+  }, [id, tenantFetch])
 
   const balance = statementData?.summary.closing_balance ?? 0
 
@@ -83,14 +87,14 @@ export default function AccountDetailPage({
     <div className="max-w-2xl mx-auto">
 
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/accounts"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Accounts
-        </Link>
+        </TenantLink>
 
         {loadingAccount ? (
           <div className="h-8 bg-stone-100 rounded w-48 animate-pulse" />

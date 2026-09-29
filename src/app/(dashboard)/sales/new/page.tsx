@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import { useCurrentStock } from '@/hooks/use-stock'
@@ -21,6 +22,7 @@ import {
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
 import type { BankAccountBalance } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -41,8 +43,10 @@ function newItem(): SaleItemDraft {
 }
 
 export default function NewSalePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { customers }  = useCustomers()
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
@@ -72,13 +76,16 @@ export default function NewSalePage() {
   const [error,  setError]  = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<SaleItemDraft>) => {
@@ -212,7 +219,7 @@ export default function NewSalePage() {
         }
       }
 
-      const res = await fetch('/api/sales', {
+      const res = await tenantFetch('/api/sales', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
@@ -227,6 +234,7 @@ export default function NewSalePage() {
       }
 
       if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
+      if (!canNavigateAfterMutation()) return
       router.push('/sales')
     } catch {
       setError('Network error — please try again')
@@ -238,14 +246,14 @@ export default function NewSalePage() {
     <div className="max-w-2xl mx-auto">
 
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/sales"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Sales
-        </Link>
+        </TenantLink>
         <h1 className="page-title">New sale</h1>
         <p className="page-subtitle">
           Invoice number will be auto-generated on save
@@ -599,12 +607,12 @@ export default function NewSalePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link
+          <TenantLink
             href="/sales"
             className="btn-secondary flex-1 justify-center"
           >
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { usePathname } from 'next/navigation'
 import {
   Menu,
@@ -19,6 +20,7 @@ import {
   Landmark,
   BarChart3,
   Settings,
+  ArrowLeft,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -26,6 +28,7 @@ import { cache } from '@/lib/cache'
 import { useRouter } from 'next/navigation'
 import { useTenant } from '@/lib/tenant-client'
 import { navPermissionForHref } from '@/lib/permissions'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const navItems = [
   { href: '/',           label: 'Dashboard', icon: LayoutDashboard },
@@ -53,16 +56,20 @@ export default function MobileHeader() {
   const router           = useRouter()
   const supabase         = createClient()
   const tenant           = useTenant()
+  const tenantFetch = useTenantFetch()
   const [overdueCount, setOverdueCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/alerts')
-      .then(r => r.json())
+    tenantFetch('/api/alerts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load alerts')
+        return r.json()
+      })
       .then(d => setOverdueCount(d.counts?.overdue ?? 0))
       .catch(console.error)
-  }, [pathname])
+  }, [pathname, tenantFetch])
 
   async function handleLogout() {
     if (loggingOut) return
@@ -144,7 +151,7 @@ export default function MobileHeader() {
 
                 const active = isActive(pathname, href)
                 return (
-                  <Link
+                  <TenantLink
                     key={href}
                     href={href}
                     onClick={() => setOpen(false)}
@@ -164,11 +171,11 @@ export default function MobileHeader() {
                       )}
                     </span>
                     {label}
-                  </Link>
+                  </TenantLink>
                 )
               })}
               {tenant.permissions.canViewSettings && (
-                <Link
+                <TenantLink
                   href="/settings"
                   onClick={() => setOpen(false)}
                   className={[
@@ -181,6 +188,18 @@ export default function MobileHeader() {
                 >
                   <Settings className="w-4 h-4 flex-shrink-0" />
                   Settings
+                </TenantLink>
+              )}
+              {tenant.isSuperAdmin && tenant.selectedTenantId && (
+                <Link
+                  href="/admin/tenants"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-md
+                             text-sm font-medium text-stone-400 hover:text-white
+                             hover:bg-stone-800 transition-colors duration-150"
+                >
+                  <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+                  Exit tenant view
                 </Link>
               )}
             </nav>

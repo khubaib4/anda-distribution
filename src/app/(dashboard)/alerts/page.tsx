@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { Phone, ChevronRight } from 'lucide-react'
 import { formatPKR } from '@/lib/utils'
 import type { OverdueSale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface AlertsData {
   overdue:   OverdueSale[]
@@ -30,13 +31,13 @@ function AlertCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <Link
+            <TenantLink
               href={`/customers/${sale.customer_id}`}
               className="font-medium text-stone-900 text-sm
                          hover:text-brand-600 transition-colors"
             >
               {sale.contact_name}
-            </Link>
+            </TenantLink>
             <span className={`badge ${badgeClass}`}>{badge}</span>
           </div>
           {sale.business_name && (
@@ -57,13 +58,13 @@ function AlertCard({
             {formatPKR(sale.balance_paisa)}
           </p>
           <p className="text-2xs text-stone-400">owed</p>
-          <Link
+          <TenantLink
             href={`/customers/${sale.customer_id}`}
             className="inline-flex items-center gap-0.5 text-xs
                        text-brand-600 hover:text-brand-700 mt-1"
           >
             Ledger <ChevronRight className="w-3 h-3" />
-          </Link>
+          </TenantLink>
         </div>
       </div>
     </div>
@@ -71,17 +72,21 @@ function AlertCard({
 }
 
 export default function AlertsPage() {
+  const tenantFetch = useTenantFetch()
   const [data,    setData]    = useState<AlertsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/alerts')
-      .then(r => r.json())
+    tenantFetch('/api/alerts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load alerts')
+        return r.json()
+      })
       .then(setData)
       .catch(() => setError('Failed to load alerts'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   return (
     <div className="max-w-2xl mx-auto">

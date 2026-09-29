@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import PurchaseItemRow, {
@@ -12,6 +14,7 @@ import PurchaseItemRow, {
 import { SkeletonList } from '@/components/ui/skeleton'
 import { todayString, formatPKR, paymentStatusLabel } from '@/lib/utils'
 import type { Purchase } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): PurchaseItemDraft {
   return {
@@ -34,9 +37,11 @@ function purchaseToItems(purchase: Purchase): PurchaseItemDraft[] {
 }
 
 export default function EditPurchasePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const params = useParams()
   const purchaseId = params.id as string
+  const tenantFetch = useTenantFetch()
 
   const { suppliers } = useSuppliers()
   const { categories } = useEggCategories()
@@ -63,7 +68,7 @@ export default function EditPurchasePage() {
     setLoading(true)
     setLoadError(null)
 
-    window.fetch(`/api/purchases/${purchaseId}`)
+    tenantFetch(`/api/purchases/${purchaseId}`)
       .then(async r => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? 'Failed to load purchase')
@@ -95,7 +100,7 @@ export default function EditPurchasePage() {
         )
       })
       .finally(() => setLoading(false))
-  }, [purchaseId])
+  }, [purchaseId, tenantFetch])
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<PurchaseItemDraft>) => {
@@ -159,7 +164,7 @@ export default function EditPurchasePage() {
         })),
       }
 
-      const res = await fetch(`/api/purchases/${purchaseId}`, {
+      const res = await tenantFetch(`/api/purchases/${purchaseId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
@@ -173,6 +178,7 @@ export default function EditPurchasePage() {
         return
       }
 
+      if (!canNavigateAfterMutation()) return
       router.push('/purchases')
     } catch {
       setError('Network error — please try again')
@@ -184,14 +190,14 @@ export default function EditPurchasePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/purchases"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Purchases
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit purchase</h1>
         </div>
         <SkeletonList count={4} />
@@ -203,14 +209,14 @@ export default function EditPurchasePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/purchases"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Purchases
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit purchase</h1>
         </div>
         <div className="text-sm text-danger bg-red-50 border border-red-200
@@ -224,14 +230,14 @@ export default function EditPurchasePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/purchases"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Purchases
-        </Link>
+        </TenantLink>
         <h1 className="page-title">Edit purchase</h1>
         {invoiceNumber && (
           <p className="page-subtitle font-mono">{invoiceNumber}</p>
@@ -358,9 +364,9 @@ export default function EditPurchasePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link href="/purchases" className="btn-secondary flex-1 justify-center">
+          <TenantLink href="/purchases" className="btn-secondary flex-1 justify-center">
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

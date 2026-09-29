@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { X } from 'lucide-react'
 import { useEggCategories } from '@/hooks/use-egg-categories'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import {
   todayString,
   formatEggs,
@@ -26,6 +27,7 @@ const REASON_OPTIONS = [
 
 export default function AdjustmentModal({ onClose, onSaved }: Props) {
   const { categories } = useEggCategories()
+  const tenantFetch = useTenantFetch()
 
   const [categoryId,   setCategoryId]   = useState('')
   const [movementType, setMovementType] = useState<
@@ -106,12 +108,20 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
       }
     }
 
-    const res = await window.fetch('/api/stock/movements', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-    })
+    let request: Promise<Response>
+    try {
+      request = tenantFetch('/api/stock/movements', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      })
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to save adjustment')
+      setSaving(false)
+      return
+    }
 
+    const res = await request
     const data = await res.json()
 
     if (!res.ok) {

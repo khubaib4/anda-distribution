@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { Plus, Pencil, ChevronRight } from 'lucide-react'
 import { useBankAccounts } from '@/hooks/use-bank-accounts'
 import AccountModal from '@/components/accounts/account-modal'
@@ -145,13 +145,13 @@ export default function AccountsPage() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Link
+                  <TenantLink
                     href={`/accounts/${account.bank_account_id}`}
                     className="font-medium text-stone-900 text-sm
                                hover:text-brand-600 truncate transition-colors"
                   >
                     {accountLabel(account)}
-                  </Link>
+                  </TenantLink>
                   {!account.is_active && (
                     <span className="badge badge-unpaid flex-shrink-0">
                       Inactive
@@ -183,13 +183,13 @@ export default function AccountsPage() {
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
 
-                <Link
+                <TenantLink
                   href={`/accounts/${account.bank_account_id}`}
                   className="btn-ghost p-1.5"
                   aria-label="View account"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+                </TenantLink>
               </div>
             </div>
           ))}

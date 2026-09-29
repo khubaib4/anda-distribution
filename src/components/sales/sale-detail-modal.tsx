@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { X, Download, Pencil } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   formatPKR,
   formatDate,
@@ -19,6 +19,7 @@ import {
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import { useTenant } from '@/lib/tenant-client'
 import type { Sale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Props {
   saleId:    string
@@ -30,8 +31,9 @@ export default function SaleDetailModal({
   saleId,
   onClose,
 }: Props) {
-  const router = useRouter()
+  const router = useTenantRouter()
   const { logoUrl } = useTenant()
+  const tenantFetch = useTenantFetch()
   const [sale,    setSale]    = useState<Sale & {
     cogs_paisa?: number
     subtotal_paisa?: number
@@ -40,14 +42,17 @@ export default function SaleDetailModal({
   const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch(`/api/sales/${saleId}`)
-      .then(r => r.json())
+    tenantFetch(`/api/sales/${saleId}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load sale')
+        return r.json()
+      })
       .then(data => {
         setSale(data)
       })
       .catch(() => setError('Failed to load sale'))
       .finally(() => setLoading(false))
-  }, [saleId])
+  }, [saleId, tenantFetch])
 
   const subtotalPaisa = computeSaleSubtotalPaisa(sale?.items ?? [])
   const totalPaisa = computeSaleTotalPaisa(sale ?? { items: [] })
@@ -114,14 +119,14 @@ export default function SaleDetailModal({
                                 tracking-wider mb-0.5">
                     Customer
                   </p>
-                  <Link
+                  <TenantLink
                     href={`/customers/${sale.customer_id}`}
                     onClick={onClose}
                     className="text-sm font-medium text-brand-600
                                hover:text-brand-700"
                   >
                     {sale.customer?.contact_name ?? '—'}
-                  </Link>
+                  </TenantLink>
                   {sale.customer?.business_name && (
                     <p className="text-xs text-stone-500">
                       {sale.customer.business_name}
@@ -279,13 +284,13 @@ export default function SaleDetailModal({
                   Record customer payments from the customer profile. Invoice
                   status updates automatically using FIFO.
                 </p>
-                <Link
+                <TenantLink
                   href={`/customers/${sale.customer_id}`}
                   onClick={onClose}
                   className="btn-secondary mt-3 inline-flex text-xs"
                 >
                   Go to customer profile
-                </Link>
+                </TenantLink>
               </div>
 
               {sale.notes && (

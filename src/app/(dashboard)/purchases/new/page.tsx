@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useSuppliers } from '@/hooks/use-suppliers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import PurchaseItemRow, {
   type PurchaseItemDraft,
 } from '@/components/purchases/purchase-item-row'
 import { todayString, formatPKR } from '@/lib/utils'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): PurchaseItemDraft {
   return {
@@ -22,7 +24,9 @@ function newItem(): PurchaseItemDraft {
 }
 
 export default function NewPurchasePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
+  const tenantFetch = useTenantFetch()
   const { suppliers } = useSuppliers()
   const { categories } = useEggCategories()
 
@@ -105,7 +109,7 @@ export default function NewPurchasePage() {
         })),
       }
 
-      const res = await fetch('/api/purchases', {
+      const res = await tenantFetch('/api/purchases', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
@@ -119,6 +123,7 @@ export default function NewPurchasePage() {
         return
       }
 
+      if (!canNavigateAfterMutation()) return
       router.push('/purchases')
     } catch {
       setError('Network error — please try again')
@@ -131,14 +136,14 @@ export default function NewPurchasePage() {
 
       {/* Back link + title */}
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/purchases"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Purchases
-        </Link>
+        </TenantLink>
         <h1 className="page-title">New purchase</h1>
         <p className="page-subtitle">
           Invoice number will be auto-generated on save
@@ -265,9 +270,9 @@ export default function NewPurchasePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link href="/purchases" className="btn-secondary flex-1 justify-center">
+          <TenantLink href="/purchases" className="btn-secondary flex-1 justify-center">
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

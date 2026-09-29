@@ -4,8 +4,67 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+type SuperAdminTenantValidation =
+  | { ok: true; tenant: { id: string; name: string; logo_url: string | null } }
+  | { ok: false; reason: 'missing' | 'invalid' | 'not_found' | 'database_error' }
+
+export async function validateSuperAdminTenantId(
+  tenantId: string | null,
+): Promise<SuperAdminTenantValidation> {
+  if (!tenantId) return { ok: false, reason: 'missing' }
+  if (!TENANT_ID_PATTERN.test(tenantId)) return { ok: false, reason: 'invalid' }
+
+  try {
+    const { data: tenant, error } = await createAdminClient()
+      .from('tenants')
+      .select('id, name, logo_url')
+      .eq('id', tenantId)
+      .maybeSingle()
+
+    if (error) return { ok: false, reason: 'database_error' }
+    if (!tenant) return { ok: false, reason: 'not_found' }
+    return { ok: true, tenant }
+  } catch {
+    return { ok: false, reason: 'database_error' }
+  }
+}
+
 export function apiUnauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+export async function requireSuperAdminTenantSelection(
+  request: Request,
+): Promise<string | NextResponse> {
+  const searchParams = new URL(request.url).searchParams
+  if (!searchParams.has('tenant_id')) {
+    return NextResponse.json(
+      { error: 'tenant_id is required', code: 'TENANT_SELECTION_REQUIRED' },
+      { status: 400 },
+    )
+  }
+
+  const selection = await validateSuperAdminTenantId(searchParams.get('tenant_id'))
+  if (!selection.ok) {
+    if (selection.reason === 'database_error') {
+      return NextResponse.json(
+        { error: 'Unable to validate tenant_id', code: 'TENANT_VALIDATION_FAILED' },
+        { status: 500 },
+      )
+    }
+    if (selection.reason === 'not_found') {
+      return NextResponse.json(
+        { error: 'Tenant not found', code: 'TENANT_NOT_FOUND' },
+        { status: 404 },
+      )
+    }
+    return NextResponse.json(
+      { error: 'Invalid tenant_id', code: 'TENANT_SELECTION_INVALID' },
+      { status: 400 },
+    )
+  }
+
+  return selection.tenant.id
 }
 
 export type ApiAuthResult = {
@@ -14,7 +73,7 @@ export type ApiAuthResult = {
 }
 
 export async function authorizeApi(
-  request?: Request,
+  request: Request,
 ): Promise<ApiAuthResult | NextResponse> {
   const ctx = await getTenantContext()
   if (!ctx) {
@@ -26,30 +85,8 @@ export async function authorizeApi(
     return { ctx, tenantId: ctx.tenantId }
   }
 
-  const searchParams = request ? new URL(request.url).searchParams : null
-  const tenantId = searchParams?.has('tenant_id')
-    ? searchParams.get('tenant_id')
-    : ctx.tenantId
-
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 })
-  }
-  if (!TENANT_ID_PATTERN.test(tenantId)) {
-    return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
-  }
-
-  const { data: tenant, error } = await createAdminClient()
-    .from('tenants')
-    .select('id')
-    .eq('id', tenantId)
-    .maybeSingle()
-
-  if (error) {
-    return NextResponse.json({ error: 'Unable to validate tenant_id' }, { status: 500 })
-  }
-  if (!tenant) {
-    return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 })
-  }
+  const tenantId = await requireSuperAdminTenantSelection(request)
+  if (tenantId instanceof NextResponse) return tenantId
 
   return { ctx, tenantId }
 }

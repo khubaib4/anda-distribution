@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
   Phone,
@@ -23,6 +23,7 @@ import {
 import { useTenant } from '@/lib/tenant-client'
 import type { CustomerBalance, BankAccountBalance } from '@/types'
 import { SkeletonList } from '@/components/ui/skeleton'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -48,6 +49,7 @@ export default function CustomerDetailPage({
 }) {
   const { id } = use(params)
   const { logoUrl } = useTenant()
+  const tenantFetch = useTenantFetch()
 
   const [customer,     setCustomer]     = useState<CustomerBalance | null>(null)
   const [ledgerData,   setLedgerData]   = useState<LedgerData | null>(null)
@@ -69,7 +71,8 @@ export default function CustomerDetailPage({
   async function loadCustomer() {
     setLoadingCust(true)
     try {
-      const res = await fetch(`/api/customers/${id}`)
+      const res = await tenantFetch(`/api/customers/${id}`)
+      if (!res.ok) throw new Error('Failed to load customer')
       const data = await res.json()
       setCustomer(data)
     } catch {
@@ -82,7 +85,8 @@ export default function CustomerDetailPage({
   async function loadLedger() {
     setLoadingLedger(true)
     try {
-      const res = await fetch(`/api/customers/${id}/ledger`)
+      const res = await tenantFetch(`/api/customers/${id}/ledger`)
+      if (!res.ok) throw new Error('Failed to load ledger')
       const data = await res.json()
       setLedgerData(data)
     } catch {
@@ -95,16 +99,19 @@ export default function CustomerDetailPage({
   useEffect(() => {
     loadCustomer()
     loadLedger()
-  }, [id])
+  }, [id, tenantFetch])
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()
@@ -118,7 +125,7 @@ export default function CustomerDetailPage({
 
     setPaying(true)
     try {
-      const res = await fetch('/api/payments', {
+      const res = await tenantFetch('/api/payments', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -165,14 +172,14 @@ export default function CustomerDetailPage({
 
       {/* Back */}
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/customers"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Customers
-        </Link>
+        </TenantLink>
 
         {loadingCust ? (
           <div className="h-8 bg-stone-100 rounded w-48 animate-pulse" />
@@ -397,13 +404,13 @@ export default function CustomerDetailPage({
             <p className="text-stone-400 text-sm">
               No transactions yet for this customer
             </p>
-            <Link
+            <TenantLink
               href="/sales/new"
               className="btn-primary mt-4 inline-flex"
             >
               <Plus className="w-4 h-4" />
               Record a sale
-            </Link>
+            </TenantLink>
           </div>
         )}
 

@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
 import { Plus, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
 import { useCurrentStock } from '@/hooks/use-stock'
@@ -23,6 +25,7 @@ import {
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
 import type { PartnerOption, Sale } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function newItem(): SaleItemDraft {
   return {
@@ -53,8 +56,10 @@ function saleToItems(sale: Sale): SaleItemDraft[] {
 }
 
 export default function EditSalePage() {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const params = useParams()
   const saleId = params.id as string
 
@@ -93,17 +98,20 @@ export default function EditSalePage() {
   const [error,  setError]  = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch('/api/partners')
-      .then(r => r.json())
+    tenantFetch('/api/partners')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load partners')
+        return r.json()
+      })
       .then((data: PartnerOption[]) => setPartners(data))
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => {
     setLoading(true)
     setLoadError(null)
 
-    window.fetch(`/api/sales/${saleId}`)
+    tenantFetch(`/api/sales/${saleId}`)
       .then(async r => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? 'Failed to load sale')
@@ -154,7 +162,7 @@ export default function EditSalePage() {
         )
       })
       .finally(() => setLoading(false))
-  }, [saleId])
+  }, [saleId, tenantFetch])
 
   const selectedPaidByPartner = partners.find(
     p => p.id === paidByPartnerId && p.source === paidByPartnerSource,
@@ -279,7 +287,7 @@ export default function EditSalePage() {
         })),
       }
 
-      const res = await fetch(`/api/sales/${saleId}`, {
+      const res = await tenantFetch(`/api/sales/${saleId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
@@ -294,6 +302,7 @@ export default function EditSalePage() {
       }
 
       if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
+      if (!canNavigateAfterMutation()) return
       router.push('/sales')
     } catch {
       setError('Network error — please try again')
@@ -305,14 +314,14 @@ export default function EditSalePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/sales"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Sales
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit sale</h1>
         </div>
         <SkeletonList count={4} />
@@ -324,14 +333,14 @@ export default function EditSalePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link
+          <TenantLink
             href="/sales"
             className="inline-flex items-center gap-1.5 text-sm text-stone-500
                        hover:text-stone-700 mb-3 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Sales
-          </Link>
+          </TenantLink>
           <h1 className="page-title">Edit sale</h1>
         </div>
         <div className="text-sm text-danger bg-red-50 border border-red-200
@@ -345,14 +354,14 @@ export default function EditSalePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/sales"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Sales
-        </Link>
+        </TenantLink>
         <h1 className="page-title">Edit sale</h1>
         {invoiceNumber && (
           <p className="page-subtitle font-mono">{invoiceNumber}</p>
@@ -665,9 +674,9 @@ export default function EditSalePage() {
         )}
 
         <div className="flex gap-3 pb-4">
-          <Link href="/sales" className="btn-secondary flex-1 justify-center">
+          <TenantLink href="/sales" className="btn-secondary flex-1 justify-center">
             Cancel
-          </Link>
+          </TenantLink>
           <button
             type="submit"
             disabled={saving}

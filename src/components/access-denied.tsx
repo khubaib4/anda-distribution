@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { Lock } from 'lucide-react'
 
 export default function AccessDenied() {
@@ -18,9 +18,9 @@ export default function AccessDenied() {
         <p className="text-sm text-stone-500 mb-6">
           Contact your business owner to request access.
         </p>
-        <Link href="/" className="btn-secondary inline-flex">
+        <TenantLink href="/" className="btn-secondary inline-flex">
           Back to Dashboard
-        </Link>
+        </TenantLink>
       </div>
     </div>
   )

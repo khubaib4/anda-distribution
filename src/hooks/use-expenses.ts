@@ -5,6 +5,7 @@ import type { Expense, ExpenseCategory } from '@/types'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
 import { useTenant } from '@/lib/tenant-client'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const LIST_TTL = 15000
 
@@ -16,6 +17,7 @@ interface Filters {
 
 export function useExpenses(filters: Filters = {}) {
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const url = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.category_id) params.set('category_id', filters.category_id)
@@ -48,7 +50,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function createExpense(payload: ExpensePayload) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch('/api/expenses', {
+    const res = await tenantFetch('/api/expenses', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -62,7 +64,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function updateExpense(id: string, payload: ExpensePayload) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/expenses/${id}`, {
+    const res = await tenantFetch(`/api/expenses/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -76,7 +78,7 @@ export function useExpenses(filters: Filters = {}) {
 
   async function deleteExpense(id: string) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/expenses/${id}`, {
+    const res = await tenantFetch(`/api/expenses/${id}`, {
       method: 'DELETE',
     })
     const result = await res.json()
@@ -97,16 +99,20 @@ export function useExpenses(filters: Filters = {}) {
 }
 
 export function useExpenseCategories() {
+  const tenantFetch = useTenantFetch()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading,    setLoading]    = useState(true)
 
   useEffect(() => {
-    window.fetch('/api/expenses/categories')
-      .then(r => r.json())
+    tenantFetch('/api/expenses/categories')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load expense categories')
+        return r.json()
+      })
       .then(data => setCategories(data))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   return { categories, loading }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ShoppingCart,
   Users,
@@ -18,6 +18,7 @@ import {
   paymentStatusLabel,
 } from '@/lib/utils'
 import { SkeletonCard, SkeletonText } from '@/components/ui/skeleton'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface DashboardData {
   today: {
@@ -69,17 +70,21 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const tenantFetch = useTenantFetch()
   const [data,    setData]    = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
   useEffect(() => {
-    window.fetch('/api/dashboard')
-      .then(r => r.json())
+    tenantFetch('/api/dashboard')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load dashboard')
+        return r.json()
+      })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   const today = new Date().toLocaleDateString('en-PK', {
     weekday: 'long',
@@ -162,13 +167,13 @@ export default function DashboardPage() {
                   ).join(', ')}
                 </p>
               )}
-              <Link
+              <TenantLink
                 href="/stock"
                 className="inline-flex items-center gap-1 mt-1 font-medium
                            underline underline-offset-2"
               >
                 View stock <ArrowRight className="w-3 h-3" />
-              </Link>
+              </TenantLink>
             </div>
           </div>
           <button
@@ -194,13 +199,13 @@ export default function DashboardPage() {
               {(data?.alerts.overdue_count ?? 0) !== 1 ? 's' : ''} — customers
               who haven&apos;t paid by due date
             </p>
-            <Link
+            <TenantLink
               href="/alerts"
               className="inline-flex items-center gap-1 mt-1 font-medium
                          underline underline-offset-2"
             >
               View alerts <ArrowRight className="w-3 h-3" />
-            </Link>
+            </TenantLink>
           </div>
         </div>
       )}
@@ -297,13 +302,13 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="section-title mb-0">Stock snapshot</p>
-          <Link
+          <TenantLink
             href="/stock"
             className="text-xs text-brand-600 hover:text-brand-700
                        font-medium flex items-center gap-1"
           >
             View all <ArrowRight className="w-3 h-3" />
-          </Link>
+          </TenantLink>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {(data?.stock.items ?? []).map(cat => {
@@ -350,13 +355,13 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="section-title mb-0">Recent sales</p>
-            <Link
+            <TenantLink
               href="/sales"
               className="text-xs text-brand-600 hover:text-brand-700
                          font-medium flex items-center gap-1"
             >
               View all <ArrowRight className="w-3 h-3" />
-            </Link>
+            </TenantLink>
           </div>
           <div className="card divide-y divide-stone-100">
             {data?.recent_sales.map(sale => {
@@ -364,7 +369,7 @@ export default function DashboardPage() {
                 (s, i) => s + i.quantity_trays, 0
               )
               return (
-                <Link
+                <TenantLink
                   key={sale.id}
                   href="/sales"
                   className="flex items-center justify-between gap-3
@@ -387,7 +392,7 @@ export default function DashboardPage() {
                       {paymentStatusLabel(sale.payment_status)}
                     </span>
                   </div>
-                </Link>
+                </TenantLink>
               )
             })}
           </div>
@@ -428,7 +433,7 @@ export default function DashboardPage() {
               bg:    'bg-red-50',
             },
           ].map(action => (
-            <Link
+            <TenantLink
               key={action.href}
               href={action.href}
               className="card p-4 flex flex-col items-center gap-2
@@ -442,7 +447,7 @@ export default function DashboardPage() {
               <p className="text-sm font-medium text-stone-700">
                 {action.label}
               </p>
-            </Link>
+            </TenantLink>
           ))}
         </div>
       </div>

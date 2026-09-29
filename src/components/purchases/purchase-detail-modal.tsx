@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useTenantRouter } from '@/hooks/use-tenant-router'
+import TenantLink from '@/components/tenant-link'
 import { X, Pencil } from 'lucide-react'
 import {
   formatPKR,
@@ -12,6 +12,7 @@ import {
   paymentStatusLabel,
 } from '@/lib/utils'
 import type { Purchase } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 interface Props {
   purchaseId: string
@@ -23,20 +24,24 @@ export default function PurchaseDetailModal({
   purchaseId,
   onClose,
 }: Props) {
-  const router = useRouter()
+  const router = useTenantRouter()
+  const tenantFetch = useTenantFetch()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 
   useEffect(() => {
-    window.fetch(`/api/purchases/${purchaseId}`)
-      .then(r => r.json())
+    tenantFetch(`/api/purchases/${purchaseId}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load purchase')
+        return r.json()
+      })
       .then(data => {
         setPurchase(data)
       })
       .catch(() => setError('Failed to load purchase'))
       .finally(() => setLoading(false))
-  }, [purchaseId])
+  }, [purchaseId, tenantFetch])
 
   const totalPaisa    = purchase?.total_paisa ?? 0
   const paidPaisa     = purchase?.amount_paid_paisa ?? 0
@@ -194,9 +199,9 @@ export default function PurchaseDetailModal({
                     will update automatically once supplier allocation is enabled.
                   </p>
                   {purchase.supplier_id && (
-                    <Link href={`/suppliers/${purchase.supplier_id}`} className="text-sm text-brand-600 hover:underline">
+                    <TenantLink href={`/suppliers/${purchase.supplier_id}`} className="text-sm text-brand-600 hover:underline">
                       Open supplier profile
-                    </Link>
+                    </TenantLink>
                   )}
                 </div>
               </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
   Phone,
@@ -15,6 +15,7 @@ import {
   todayString,
 } from '@/lib/utils'
 import type { SupplierBalance, SupplierLedgerEntry, BankAccountBalance } from '@/types'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
   if (account.nickname) return account.nickname
@@ -36,6 +37,7 @@ export default function SupplierDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  const tenantFetch = useTenantFetch()
 
   const [supplier,      setSupplier]      = useState<SupplierBalance | null>(null)
   const [ledgerData,    setLedgerData]    = useState<LedgerData | null>(null)
@@ -57,7 +59,8 @@ export default function SupplierDetailPage({
   async function loadSupplier() {
     setLoadingCust(true)
     try {
-      const res  = await window.fetch(`/api/suppliers/${id}`)
+      const res  = await tenantFetch(`/api/suppliers/${id}`)
+      if (!res.ok) throw new Error('Failed to load supplier')
       const data = await res.json()
       setSupplier(data)
     } catch { /* ignore */ }
@@ -67,7 +70,8 @@ export default function SupplierDetailPage({
   async function loadLedger() {
     setLoadingLedger(true)
     try {
-      const res  = await window.fetch(`/api/suppliers/${id}/ledger`)
+      const res  = await tenantFetch(`/api/suppliers/${id}/ledger`)
+      if (!res.ok) throw new Error('Failed to load ledger')
       const data = await res.json()
       setLedgerData(data)
     } catch { /* ignore */ }
@@ -77,16 +81,19 @@ export default function SupplierDetailPage({
   useEffect(() => {
     loadSupplier()
     loadLedger()
-  }, [id])
+  }, [id, tenantFetch])
 
   useEffect(() => {
-    window.fetch('/api/accounts')
-      .then(r => r.json())
+    tenantFetch('/api/accounts')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load accounts')
+        return r.json()
+      })
       .then((data: BankAccountBalance[]) =>
         setBankAccounts(data.filter(a => a.is_active))
       )
       .catch(console.error)
-  }, [])
+  }, [tenantFetch])
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()
@@ -100,7 +107,7 @@ export default function SupplierDetailPage({
 
     setPaying(true)
     try {
-      const res = await window.fetch('/api/supplier-payments', {
+      const res = await tenantFetch('/api/supplier-payments', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -144,14 +151,14 @@ export default function SupplierDetailPage({
 
       {/* Back */}
       <div className="mb-6">
-        <Link
+        <TenantLink
           href="/suppliers"
           className="inline-flex items-center gap-1.5 text-sm text-stone-500
                      hover:text-stone-700 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Suppliers
-        </Link>
+        </TenantLink>
 
         {loadingCust ? (
           <div className="h-8 bg-stone-100 rounded w-48 animate-pulse" />
@@ -349,10 +356,10 @@ export default function SupplierDetailPage({
             <p className="text-stone-400 text-sm">
               No transactions yet for this supplier
             </p>
-            <Link href="/purchases/new" className="btn-primary mt-4 inline-flex">
+            <TenantLink href="/purchases/new" className="btn-primary mt-4 inline-flex">
               <Plus className="w-4 h-4" />
               Record a purchase
-            </Link>
+            </TenantLink>
           </div>
         )}
 

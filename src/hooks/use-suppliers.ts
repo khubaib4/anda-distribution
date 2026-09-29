@@ -3,12 +3,14 @@
 import type { SupplierBalance } from '@/types'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useCachedFetch } from '@/hooks/use-cached-fetch'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import { useTenant } from '@/lib/tenant-client'
 
 const LIST_TTL = 15000
 
 export function useSuppliers() {
   const { userId, tenantId } = useTenant()
+  const tenantFetch = useTenantFetch()
   const { data, loading, error, refetch } = useCachedFetch<SupplierBalance[]>(
     '/api/suppliers',
     { ttl: LIST_TTL },
@@ -21,7 +23,7 @@ export function useSuppliers() {
     notes?:   string
   }) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch('/api/suppliers', {
+    const res = await tenantFetch('/api/suppliers', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
@@ -44,7 +46,7 @@ export function useSuppliers() {
     }>,
   ) {
     const mutationScope = createCacheScope(userId, tenantId)
-    const res = await window.fetch(`/api/suppliers/${id}`, {
+    const res = await tenantFetch(`/api/suppliers/${id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),

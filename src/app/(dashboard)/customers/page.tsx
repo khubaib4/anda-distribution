@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Plus, Pencil, Phone, ChevronRight } from 'lucide-react'
-import Link from 'next/link'
+import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import CustomerModal from '@/components/customers/customer-modal'
 import { formatPKR, customerTypeLabel } from '@/lib/utils'
@@ -187,13 +187,13 @@ export default function CustomersPage() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Link
+                  <TenantLink
                     href={`/customers/${customer.customer_id}`}
                     className="font-medium text-stone-900 text-sm hover:text-brand-600
                                truncate transition-colors"
                   >
                     {customer.contact_name}
-                  </Link>
+                  </TenantLink>
                   {customer.customer_type && (
                     <span className="badge badge-info flex-shrink-0 text-2xs">
                       {customerTypeLabel(customer.customer_type)}
@@ -250,13 +250,13 @@ export default function CustomersPage() {
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
 
-                <Link
+                <TenantLink
                   href={`/customers/${customer.customer_id}`}
                   className="btn-ghost p-1.5"
                   aria-label="View ledger"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+                </TenantLink>
               </div>
             </div>
           ))}

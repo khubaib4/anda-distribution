@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Copy, Check, Trash2, ImageIcon } from 'lucide-react'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024
 
@@ -46,6 +47,7 @@ function memberInitial(name: string): string {
 
 export default function SettingsPage() {
   const tenantCtx = useTenant()
+  const tenantFetch = useTenantFetch()
   const { permissions, role } = tenantCtx
   const canEditLogo = role === 'owner'
 
@@ -68,7 +70,7 @@ export default function SettingsPage() {
   const [copied,        setCopied]        = useState(false)
 
   useEffect(() => {
-    window.fetch('/api/settings')
+    tenantFetch('/api/settings')
       .then(r => r.json())
       .then(d => {
         if (d.error) {
@@ -81,7 +83,7 @@ export default function SettingsPage() {
       })
       .catch(() => setError('Failed to load settings'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [tenantFetch])
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault()
@@ -89,7 +91,7 @@ export default function SettingsPage() {
     setNameSuccess(false)
     setError(null)
 
-    const res = await window.fetch('/api/settings', {
+    const res = await tenantFetch('/api/settings', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ name: businessName }),
@@ -160,7 +162,7 @@ export default function SettingsPage() {
     setLogoRemoving(true)
     setError(null)
 
-    const res = await window.fetch('/api/settings', {
+    const res = await tenantFetch('/api/settings', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ logo_url: null }),
