@@ -53,14 +53,13 @@ async function enrichMembers(
     user_id: string
     role: string
     created_at: string
-    profile: { full_name: string } | { full_name: string }[] | null
   }>,
+  profileNames: ReadonlyMap<string, string | null>,
 ) {
   const admin = createAdminClient()
 
   return Promise.all(
     members.map(async m => {
-      const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile
       let email: string | null = null
       try {
         const { data } = await admin.auth.admin.getUserById(m.user_id)
@@ -73,7 +72,7 @@ async function enrichMembers(
         id:         m.id,
         user_id:    m.user_id,
         role:       m.role,
-        full_name:  profile?.full_name ?? '—',
+        full_name:  profileNames.get(m.user_id) ?? '—',
         email,
         joined_at:  m.created_at,
       }
@@ -116,13 +115,7 @@ export async function GET(
     enrichTenant(tenant),
     admin
       .from('tenant_members')
-      .select(`
-        id,
-        user_id,
-        role,
-        created_at,
-        profile:profiles(full_name)
-      `)
+      .select('id, user_id, role, created_at')
       .eq('tenant_id', id)
       .order('created_at', { ascending: true }),
     admin
@@ -141,7 +134,17 @@ export async function GET(
     return NextResponse.json({ error: invitationsError.message }, { status: 500 })
   }
 
-  const enrichedMembers = await enrichMembers(members ?? [])
+  const userIds = [...new Set((members ?? []).map(m => m.user_id))]
+  const { data: profiles, error: profilesError } = userIds.length > 0
+    ? await admin.from('profiles').select('id, full_name').in('id', userIds)
+    : { data: [], error: null }
+
+  if (profilesError) {
+    return NextResponse.json({ error: profilesError.message }, { status: 500 })
+  }
+
+  const profileNames = new Map((profiles ?? []).map(p => [p.id, p.full_name]))
+  const enrichedMembers = await enrichMembers(members ?? [], profileNames)
 
   return NextResponse.json({
     tenant:      enrichedTenant,
