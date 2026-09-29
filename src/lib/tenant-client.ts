@@ -26,7 +26,7 @@ export function useTenant(): TenantContext {
   return ctx
 }
 
-export type TenantContextResponse = Omit<TenantContext, 'permissions'>
+export type TenantContextResponse = TenantContext
 
 export type TenantSelectionErrorCode =
   | 'TENANT_SELECTION_INVALID'

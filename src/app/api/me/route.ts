@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getTenantContext } from '@/lib/tenant'
 import { validateSuperAdminTenantId } from '@/lib/tenant-api'
-import { getDefaultPermissions } from '@/lib/permissions'
 
 export async function GET(request: Request) {
   const ctx = await getTenantContext()
@@ -44,7 +43,7 @@ export async function GET(request: Request) {
         logoUrl:          tenant.logo_url ?? null,
         role:             'super_admin',
         isSuperAdmin:     true,
-        permissions:      getDefaultPermissions('super_admin'),
+        permissions:      ctx.permissions,
       })
     }
 
@@ -56,7 +55,7 @@ export async function GET(request: Request) {
       logoUrl:          null,
       role:             'super_admin',
       isSuperAdmin:     true,
-      permissions:      getDefaultPermissions('super_admin'),
+      permissions:      ctx.permissions,
     })
   }
 
@@ -89,6 +88,6 @@ export async function GET(request: Request) {
     logoUrl:          tenant.logo_url ?? null,
     role,
     isSuperAdmin:     ctx.isSuperAdmin,
-    permissions:      getDefaultPermissions(role),
+    permissions:      ctx.permissions,
   })
 }

@@ -11,7 +11,6 @@ import {
   fetchTenantContext,
   type TenantContext as TenantContextValue,
 } from '@/lib/tenant-client'
-import { getDefaultPermissions } from '@/lib/permissions'
 
 interface Props {
   children: React.ReactNode
@@ -161,7 +160,6 @@ export default function TenantProvider({ children }: Props) {
         ...data,
         tenantId: effectiveTenantId,
         selectedTenantId: data.isSuperAdmin ? data.selectedTenantId : null,
-        permissions: getDefaultPermissions(data.isSuperAdmin ? 'super_admin' : data.role),
       },
     })
   }, [])

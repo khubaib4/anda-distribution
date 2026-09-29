@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOwnerOnly } from '@/lib/settings-auth'
+import { storedModuleOverrides, validateModuleOverrides } from '@/lib/permissions'
 
 export async function DELETE(
   request: Request,
@@ -57,20 +58,69 @@ export async function PATCH(
 
   const { tenantId } = auth
   const { id: memberId } = await params
-  const body = await request.json()
-  const { role, permissions } = body
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  const { role, permissions } = body as Record<string, unknown>
+
+  if (role !== undefined && role !== 'owner' && role !== 'staff') {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
+
+  const overrides = permissions === undefined
+    ? undefined
+    : validateModuleOverrides(permissions)
+  if (overrides === null) {
+    return NextResponse.json({ error: 'Invalid permissions' }, { status: 400 })
+  }
+  if (role === undefined && (!overrides || Object.keys(overrides).length === 0)) {
+    return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+  }
+
+  const supabase = await createClient()
+  const { data: existing, error: fetchError } = await supabase
+    .from('tenant_members')
+    .select('id, user_id, role, permissions')
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 500 })
+  }
+  if (!existing) {
+    return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  }
+  if (overrides && (existing.role !== 'staff' || role === 'owner')) {
+    return NextResponse.json(
+      { error: 'Only staff permissions can be edited' },
+      { status: 400 },
+    )
+  }
 
   const updates: Record<string, unknown> = {}
   if (role        !== undefined) updates.role        = role
-  if (permissions !== undefined) updates.permissions = permissions
+  if (overrides) {
+    updates.permissions = {
+      ...storedModuleOverrides(existing.permissions),
+      ...overrides,
+    }
+  }
 
-  const supabase = await createClient()
-
-  const { data: member, error } = await supabase
+  let updateQuery = supabase
     .from('tenant_members')
     .update(updates)
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
+  if (overrides) updateQuery = updateQuery.eq('role', 'staff')
+
+  const { data: member, error } = await updateQuery
     .select('id, user_id, role, permissions')
     .maybeSingle()
 
