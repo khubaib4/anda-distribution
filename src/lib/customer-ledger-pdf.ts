@@ -1,6 +1,8 @@
 import { jsPDF } from 'jspdf'
-import { formatPKR, formatDate, customerTypeLabel } from '@/lib/utils'
+import { formatDate, customerTypeLabel } from '@/lib/utils'
 import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
+import { formatPdfPKR } from '@/lib/pdf-money'
+import { BUSINESS_TIME_ZONE, businessDateString } from '@/lib/business-date'
 import type { CustomerBalance } from '@/types'
 
 export interface LedgerEntry {
@@ -24,8 +26,75 @@ export interface LedgerData {
   }
 }
 
-function pdfPKR(paisa: number): string {
-  return formatPKR(paisa).replace('₨', 'Rs.').replace(/\u00A0/g, ' ')
+const LEDGER_MARGIN = 20
+const LEDGER_TEXT_SIZE = 8
+const LEDGER_LINE_HEIGHT = 4
+const LEDGER_AMOUNT_GAP = 3
+const LEDGER_LAST_BASELINE = 255
+const LEDGER_PAGE_TOP = 20
+const LEDGER_HEADER_HEIGHT = 9
+
+function ledgerColumns(pageWidth: number, margin: number) {
+  return {
+    date: margin,
+    description: margin + 24,
+    debit: pageWidth - margin - 58,
+    credit: pageWidth - margin - 38,
+    balance: pageWidth - margin,
+  }
+}
+
+/** Measure the actual row text before deciding how much room the description gets. */
+export function layoutLedgerRow(doc: jsPDF, entry: LedgerEntry, margin = LEDGER_MARGIN) {
+  const columns = ledgerColumns(doc.internal.pageSize.getWidth(), margin)
+  const balanceColor =
+    entry.running_balance > 0 ? 'danger'
+    : entry.running_balance < 0 ? 'success'
+    : 'neutral'
+  const balanceAmount = pdfAmount(Math.abs(entry.running_balance), balanceColor)
+  const candidates = [
+    entry.debit_paisa > 0
+      ? { column: 'debit' as const, ...pdfAmount(entry.debit_paisa, 'danger') }
+      : null,
+    entry.credit_paisa > 0
+      ? { column: 'credit' as const, ...pdfAmount(entry.credit_paisa, 'success') }
+      : null,
+    {
+      column: 'balance' as const,
+      ...balanceAmount,
+      text: entry.running_balance === 0 ? '—' : balanceAmount.text,
+    },
+  ].filter(item => item !== null)
+
+  const amounts: Array<(typeof candidates)[number] & {
+    x: number
+    left: number
+    line: number
+  }> = []
+  for (const amount of candidates) {
+    const x = columns[amount.column]
+    const left = x - doc.getTextWidth(amount.text)
+    let line = 0
+    while (amounts.some(other =>
+      other.line === line &&
+      left < other.x + LEDGER_AMOUNT_GAP &&
+      other.left < x + LEDGER_AMOUNT_GAP
+    )) {
+      line++
+    }
+    amounts.push({ ...amount, x, left, line })
+  }
+
+  const amountLeft = Math.min(...amounts.map(amount => amount.left))
+  const descriptionWidth = amountLeft - columns.description - LEDGER_AMOUNT_GAP
+  const descriptionLines = doc.splitTextToSize(entry.description, descriptionWidth) as string[]
+  const lineCount = Math.max(
+    1,
+    descriptionLines.length,
+    ...amounts.map(amount => amount.line + 1),
+  )
+
+  return { columns, amounts, descriptionWidth, descriptionLines, lineCount, gap: LEDGER_AMOUNT_GAP }
 }
 
 function pdfAmount(
@@ -37,11 +106,12 @@ function pdfAmount(
     success: { r: 22,  g: 163, b: 74  },
     neutral: { r: 68,  g: 64,  b: 60  },
   }
-  return { text: pdfPKR(paisa), ...colors[color] }
+  return { text: formatPdfPKR(paisa), ...colors[color] }
 }
 
 function todayLabel(): string {
   return new Date().toLocaleDateString('en-PK', {
+    timeZone: BUSINESS_TIME_ZONE,
     day:   'numeric',
     month: 'long',
     year:  'numeric',
@@ -59,7 +129,7 @@ export async function generateCustomerLedgerPDF(
 ): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
-  const margin    = 20
+  const margin    = LEDGER_MARGIN
   let y           = 22
 
   const generatedDate = todayLabel()
@@ -151,6 +221,9 @@ export async function generateCustomerLedgerPDF(
     const amount = pdfAmount(item.value, item.color)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(11)
+    if (doc.getTextWidth(amount.text) > boxWidth - 8) {
+      doc.setFontSize(9)
+    }
     doc.setTextColor(amount.r, amount.g, amount.b)
     doc.text(amount.text, x + 4, summaryY + 16)
     doc.setTextColor(0, 0, 0)
@@ -158,11 +231,7 @@ export async function generateCustomerLedgerPDF(
 
   y = summaryY + 30
 
-  const colDate   = margin
-  const colDesc   = margin + 24
-  const colDebit  = pageWidth - margin - 58
-  const colCredit = pageWidth - margin - 38
-  const colBal    = pageWidth - margin
+  const columns = ledgerColumns(pageWidth, margin)
 
   function drawTableHeader() {
     doc.setFillColor(245, 245, 244)
@@ -171,110 +240,131 @@ export async function generateCustomerLedgerPDF(
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(80, 80, 80)
-    doc.text('Date', colDate, y)
-    doc.text('Description', colDesc, y)
-    doc.text('Debit', colDebit, y, { align: 'right' })
-    doc.text('Credit', colCredit, y, { align: 'right' })
-    doc.text('Balance', colBal, y, { align: 'right' })
+    doc.text('Date', columns.date, y)
+    doc.text('Description', columns.description, y)
+    doc.text('Debit', columns.debit, y, { align: 'right' })
+    doc.text('Credit', columns.credit, y, { align: 'right' })
+    doc.text('Balance', columns.balance, y, { align: 'right' })
     doc.setTextColor(0, 0, 0)
-    y += 9
+    y += LEDGER_HEADER_HEIGHT
   }
 
   drawTableHeader()
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
+  doc.setFontSize(LEDGER_TEXT_SIZE)
 
   ledgerData.ledger.forEach((entry, index) => {
-    if (y > 255) {
+    const row = layoutLedgerRow(doc, entry, margin)
+    const fullPageLines = Math.floor(
+      (LEDGER_LAST_BASELINE - LEDGER_PAGE_TOP - LEDGER_HEADER_HEIGHT) / LEDGER_LINE_HEIGHT,
+    ) + 1
+    if (
+      y + (row.lineCount - 1) * LEDGER_LINE_HEIGHT > LEDGER_LAST_BASELINE &&
+      (row.lineCount <= fullPageLines || y > LEDGER_PAGE_TOP + LEDGER_HEADER_HEIGHT)
+    ) {
       doc.addPage()
-      y = 20
+      y = LEDGER_PAGE_TOP
       drawTableHeader()
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(8)
+      doc.setFontSize(LEDGER_TEXT_SIZE)
     }
 
-    if (index % 2 === 1) {
-      doc.setFillColor(252, 252, 251)
-      doc.rect(margin, y - 4, pageWidth - 2 * margin, 8, 'F')
+    let firstLine = 0
+    while (firstLine < row.lineCount) {
+      const linesOnPage = Math.min(
+        row.lineCount - firstLine,
+        Math.floor((LEDGER_LAST_BASELINE - y) / LEDGER_LINE_HEIGHT) + 1,
+      )
+
+      if (index % 2 === 1) {
+        doc.setFillColor(252, 252, 251)
+        doc.rect(
+          margin,
+          y - 4,
+          pageWidth - 2 * margin,
+          8 + (linesOnPage - 1) * LEDGER_LINE_HEIGHT,
+          'F',
+        )
+      }
+
+      if (firstLine === 0) {
+        doc.setTextColor(100, 100, 100)
+        doc.text(formatDate(entry.entry_date), columns.date, y)
+      }
+      doc.setTextColor(0, 0, 0)
+      for (let line = 0; line < linesOnPage; line++) {
+        const description = row.descriptionLines[firstLine + line]
+        if (description) {
+          doc.text(description, columns.description, y + line * LEDGER_LINE_HEIGHT)
+        }
+      }
+      for (const amount of row.amounts) {
+        if (amount.line >= firstLine && amount.line < firstLine + linesOnPage) {
+          doc.setTextColor(amount.r, amount.g, amount.b)
+          doc.text(
+            amount.text,
+            amount.x,
+            y + (amount.line - firstLine) * LEDGER_LINE_HEIGHT,
+            { align: 'right' },
+          )
+        }
+      }
+      doc.setTextColor(0, 0, 0)
+
+      y += 6 + (linesOnPage - 1) * LEDGER_LINE_HEIGHT
+      firstLine += linesOnPage
+      if (firstLine < row.lineCount) {
+        doc.addPage()
+        y = LEDGER_PAGE_TOP
+        drawTableHeader()
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(LEDGER_TEXT_SIZE)
+      }
     }
-
-    doc.setTextColor(100, 100, 100)
-    doc.text(formatDate(entry.entry_date), colDate, y)
-
-    doc.setTextColor(0, 0, 0)
-    const descLines = doc.splitTextToSize(
-      entry.description,
-      colDebit - colDesc - 4,
-    )
-    doc.text(descLines[0], colDesc, y)
-    const extraLines = descLines.length - 1
-
-    if (entry.debit_paisa > 0) {
-      const amt = pdfAmount(entry.debit_paisa, 'danger')
-      doc.setTextColor(amt.r, amt.g, amt.b)
-      doc.text(amt.text, colDebit, y, { align: 'right' })
-    }
-
-    if (entry.credit_paisa > 0) {
-      const amt = pdfAmount(entry.credit_paisa, 'success')
-      doc.setTextColor(amt.r, amt.g, amt.b)
-      doc.text(amt.text, colCredit, y, { align: 'right' })
-    }
-
-    const balColor =
-      entry.running_balance > 0 ? 'danger'
-      : entry.running_balance < 0 ? 'success'
-      : 'neutral'
-    const balAmt = pdfAmount(Math.abs(entry.running_balance), balColor)
-    doc.setTextColor(balAmt.r, balAmt.g, balAmt.b)
-    doc.text(
-      entry.running_balance === 0 ? '—' : balAmt.text,
-      colBal,
-      y,
-      { align: 'right' },
-    )
-    doc.setTextColor(0, 0, 0)
-
-    y += 6 + extraLines * 4
   })
 
   y += 2
+  if (y > 240) {
+    doc.addPage()
+    y = 20
+  }
   doc.setLineWidth(0.4)
   doc.line(margin, y, pageWidth - margin, y)
   y += 7
 
   doc.setFillColor(245, 245, 244)
-  doc.rect(margin, y - 5, pageWidth - 2 * margin, 10, 'F')
+  doc.rect(margin, y - 5, pageWidth - 2 * margin, 24, 'F')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
-  doc.text('CLOSING BALANCE', colDesc, y)
-
   const closingDebit = pdfAmount(ledgerData.summary.total_debit_paisa, 'danger')
-  doc.setTextColor(closingDebit.r, closingDebit.g, closingDebit.b)
-  doc.text(closingDebit.text, colDebit, y, { align: 'right' })
-
   const closingCredit = pdfAmount(
     ledgerData.summary.total_credit_paisa,
     'success',
   )
-  doc.setTextColor(closingCredit.r, closingCredit.g, closingCredit.b)
-  doc.text(closingCredit.text, colCredit, y, { align: 'right' })
-
   const closingBalColor =
     balance > 0 ? 'danger' : balance < 0 ? 'success' : 'neutral'
   const closingBal = pdfAmount(Math.abs(balance), closingBalColor)
-  doc.setTextColor(closingBal.r, closingBal.g, closingBal.b)
-  doc.text(
-    balance === 0 ? 'Settled' : closingBal.text,
-    colBal,
-    y,
-    { align: 'right' },
-  )
+  const closingRows = [
+    { label: 'TOTAL SALES', amount: closingDebit.text, color: closingDebit },
+    { label: 'TOTAL PAID', amount: closingCredit.text, color: closingCredit },
+    {
+      label: balance < 0 ? 'ADVANCE' : 'CLOSING BALANCE',
+      amount: balance === 0 ? 'Settled' : closingBal.text,
+      color: closingBal,
+    },
+  ]
+  closingRows.forEach((row, index) => {
+    const rowY = y + index * 7
+    doc.setTextColor(0, 0, 0)
+    doc.text(row.label, columns.description, rowY)
+    doc.setTextColor(row.color.r, row.color.g, row.color.b)
+    doc.text(row.amount, columns.balance, rowY, { align: 'right' })
+  })
   doc.setTextColor(0, 0, 0)
 
-  y += 18
+  y += 32
   doc.setFont('helvetica', 'italic')
   doc.setFontSize(9)
   doc.setTextColor(120, 120, 120)
@@ -287,7 +377,7 @@ export async function generateCustomerLedgerPDF(
     { align: 'center' },
   )
 
-  const dateSlug = new Date().toISOString().split('T')[0]
+  const dateSlug = businessDateString()
   const filename = `statement_${safeFilename(customer.contact_name)}_${dateSlug}.pdf`
   doc.save(filename)
 }

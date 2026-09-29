@@ -19,6 +19,7 @@ import {
 } from '@/lib/utils'
 import { SkeletonCard, SkeletonText } from '@/components/ui/skeleton'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
+import { BUSINESS_TIME_ZONE } from '@/lib/business-date'
 
 interface DashboardData {
   today: {
@@ -87,6 +88,7 @@ export default function DashboardPage() {
   }, [tenantFetch])
 
   const today = new Date().toLocaleDateString('en-PK', {
+    timeZone: BUSINESS_TIME_ZONE,
     weekday: 'long',
     day:     'numeric',
     month:   'long',

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatPKR, formatDate, todayString } from '@/lib/utils'
+import { shiftCalendarDate } from '@/lib/business-date'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
@@ -41,12 +42,6 @@ interface CashBookData {
     total: number
   }
   net: number
-}
-
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
 }
 
 function formatMethod(method: string | null): string | null {
@@ -101,7 +96,7 @@ export default function CashBookPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setDate(d => shiftDate(d, -1))}
+            onClick={() => setDate(d => shiftCalendarDate(d, -1))}
             className="btn-ghost p-2"
             aria-label="Previous day"
           >
@@ -117,7 +112,7 @@ export default function CashBookPage() {
 
           <button
             type="button"
-            onClick={() => setDate(d => shiftDate(d, 1))}
+            onClick={() => setDate(d => shiftCalendarDate(d, 1))}
             className="btn-ghost p-2"
             aria-label="Next day"
           >

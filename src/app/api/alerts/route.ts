@@ -2,11 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 import { computeSaleTotalPaisa } from '@/lib/utils'
+import { businessDateString, calendarDaysBetween } from '@/lib/business-date'
 
 function daysOverdue(dueDate: string, today: string): number {
-  const dueMs   = new Date(`${dueDate}T00:00:00`).getTime()
-  const todayMs = new Date(`${today}T00:00:00`).getTime()
-  return Math.floor((todayMs - dueMs) / 86_400_000)
+  return calendarDaysBetween(dueDate, today)
 }
 
 function mapOverdueSale(
@@ -60,7 +59,7 @@ export async function GET(request: Request) {
   const { tenantId } = auth
 
   const supabase = await createClient()
-  const today    = new Date().toISOString().split('T')[0]
+  const today    = businessDateString()
 
   const saleSelect = `
     id,

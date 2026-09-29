@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
+import { businessDateString } from '@/lib/business-date'
 import type { PartnerCapitalSummary } from '@/types'
 
 type SummaryKey = string
@@ -226,7 +227,7 @@ export async function POST(request: Request) {
       partner_profile_id: partner_profile_id || null,
       type,
       amount_paisa,
-      transaction_date: transaction_date || new Date().toISOString().split('T')[0],
+      transaction_date: transaction_date || businessDateString(),
       reference:        reference        || null,
       notes:            notes            || null,
       created_by:       user?.id         || null,

@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { traysToEggs } from '@/lib/utils'
+import { isPositiveWholeEggCount, wholeEggsFromTrays } from '@/lib/quantity'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { validateOutboundStockAvailability } from '@/lib/stock-availability'
+import { businessDateString } from '@/lib/business-date'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -96,27 +97,24 @@ export async function POST(request: Request) {
   let quantity_trays: number
 
   if (quantity_unit === 'eggs') {
-    quantity_eggs = Number(inputEggs)
-    if (
-      !Number.isFinite(quantity_eggs) ||
-      quantity_eggs <= 0 ||
-      !Number.isInteger(quantity_eggs)
-    ) {
+    if (!isPositiveWholeEggCount(inputEggs)) {
       return NextResponse.json(
         { error: 'Egg quantity must be a whole number greater than 0' },
         { status: 400 },
       )
     }
+    quantity_eggs = inputEggs
     quantity_trays = Math.ceil(quantity_eggs / 30)
   } else {
-    quantity_trays = Number(inputTrays)
-    if (!Number.isFinite(quantity_trays) || quantity_trays <= 0) {
+    const wholeEggs = wholeEggsFromTrays(inputTrays)
+    if (wholeEggs === null) {
       return NextResponse.json(
-        { error: 'Quantity must be greater than 0' },
+        { error: 'Tray quantity must equal a whole number of eggs greater than 0' },
         { status: 400 },
       )
     }
-    quantity_eggs = traysToEggs(quantity_trays)
+    quantity_trays = inputTrays
+    quantity_eggs = wholeEggs
   }
 
   if (movement_type === 'adjustment_out') {
@@ -174,7 +172,7 @@ export async function POST(request: Request) {
       reason:              reason              || null,
       price_per_egg_paisa: price_per_egg_paisa ?? 0,
       notes:               notes               || null,
-      movement_date:       movement_date       || new Date().toISOString().split('T')[0],
+      movement_date:       movement_date       || businessDateString(),
       created_by:          user?.id            || null,
     })
     .select()

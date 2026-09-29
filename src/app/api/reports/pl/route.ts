@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 import { computeSaleTotalPaisa, effectiveItemLineTotalPaisa } from '@/lib/utils'
+import { businessDateString } from '@/lib/business-date'
 
 type SaleItemRow = {
   quantity_trays: number
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
-  const today     = new Date().toISOString().split('T')[0]
+  const today     = businessDateString()
   const monthStart = today.slice(0, 7) + '-01'
 
   const from = searchParams.get('from') || monthStart

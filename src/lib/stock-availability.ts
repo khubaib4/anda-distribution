@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isPositiveWholeEggCount, wholeEggsFromWholeTrays } from './quantity'
 
 const IN_TYPES = ['purchase_in', 'adjustment_in', 'opening_stock'] as const
 
@@ -114,19 +115,22 @@ export async function validateSaleStockAvailability({
   const requestedEggsByCategory = new Map<string, number>()
 
   for (const item of items) {
-    if (!item.egg_category_id) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      Array.isArray(item) ||
+      typeof item.egg_category_id !== 'string' ||
+      !item.egg_category_id
+    ) {
       invalidItems.push({ reason: 'Egg category is required' })
       continue
     }
 
-    if (
-      typeof item.quantity_trays !== 'number' ||
-      !Number.isFinite(item.quantity_trays) ||
-      item.quantity_trays <= 0
-    ) {
+    const requestedEggs = wholeEggsFromWholeTrays(item.quantity_trays)
+    if (requestedEggs === null) {
       invalidItems.push({
         egg_category_id: item.egg_category_id,
-        reason: 'Quantity must be greater than 0',
+        reason: 'Quantity must be a positive whole number of trays',
       })
       continue
     }
@@ -134,7 +138,7 @@ export async function validateSaleStockAvailability({
     addToMap(
       requestedEggsByCategory,
       item.egg_category_id,
-      item.quantity_trays * 30,
+      requestedEggs,
     )
   }
 
@@ -246,12 +250,8 @@ export async function validateOutboundStockAvailability({
     return { ok: false, invalidReason: 'Egg category is required' }
   }
 
-  if (
-    typeof requestedEggs !== 'number' ||
-    !Number.isFinite(requestedEggs) ||
-    requestedEggs <= 0
-  ) {
-    return { ok: false, invalidReason: 'Quantity must be greater than 0' }
+  if (!isPositiveWholeEggCount(requestedEggs)) {
+    return { ok: false, invalidReason: 'Quantity must be a positive whole number of eggs' }
   }
 
   const { data: category, error: categoryError } = await supabase
@@ -318,19 +318,22 @@ export async function validatePurchaseEditStockAvailability({
   const newPurchaseEggsByCategory = new Map<string, number>()
 
   for (const item of items) {
-    if (!item.egg_category_id) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      Array.isArray(item) ||
+      typeof item.egg_category_id !== 'string' ||
+      !item.egg_category_id
+    ) {
       invalidItems.push({ reason: 'Egg category is required' })
       continue
     }
 
-    if (
-      typeof item.quantity_trays !== 'number' ||
-      !Number.isFinite(item.quantity_trays) ||
-      item.quantity_trays <= 0
-    ) {
+    const requestedEggs = wholeEggsFromWholeTrays(item.quantity_trays)
+    if (requestedEggs === null) {
       invalidItems.push({
         egg_category_id: item.egg_category_id,
-        reason: 'Quantity must be greater than 0',
+        reason: 'Quantity must be a positive whole number of trays',
       })
       continue
     }
@@ -338,7 +341,7 @@ export async function validatePurchaseEditStockAvailability({
     addToMap(
       newPurchaseEggsByCategory,
       item.egg_category_id,
-      item.quantity_trays * 30,
+      requestedEggs,
     )
   }
 

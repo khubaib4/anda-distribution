@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { recalculateSupplierPurchaseAllocations } from '@/lib/supplier-payment-allocation'
+import { wholeEggsFromWholeTrays } from '@/lib/quantity'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -113,16 +114,24 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
-  if (!items || items.length === 0) {
+  if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json(
       { error: 'At least one item is required' },
       { status: 400 }
     )
   }
   for (const item of items) {
-    if (!item.egg_category_id || !item.quantity_trays || !item.price_per_tray_paisa) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      Array.isArray(item) ||
+      typeof item.egg_category_id !== 'string' ||
+      !item.egg_category_id ||
+      wholeEggsFromWholeTrays(item.quantity_trays) === null ||
+      !item.price_per_tray_paisa
+    ) {
       return NextResponse.json(
-        { error: 'Each item needs category, quantity, and price' },
+        { error: 'Each item needs category, a positive whole number of trays, and price' },
         { status: 400 }
       )
     }

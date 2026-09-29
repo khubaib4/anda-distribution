@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
 import { computeSaleTotalPaisa } from '@/lib/utils'
+import { businessDateString } from '@/lib/business-date'
 
 const IN_TYPES = ['purchase_in', 'adjustment_in', 'opening_stock'] as const
 
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   const { tenantId } = auth
 
   const supabase = await createClient()
-  const today    = new Date().toISOString().split('T')[0]
+  const today    = businessDateString()
   const monthStart = today.slice(0, 7) + '-01'
 
   // 1. Today's sales total

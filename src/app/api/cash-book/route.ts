@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
+import { businessDateString } from '@/lib/business-date'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = businessDateString()
   const date  = searchParams.get('date') || today
 
   const [

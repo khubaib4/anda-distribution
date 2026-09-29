@@ -1,6 +1,5 @@
 import { jsPDF } from 'jspdf'
 import {
-  formatPKR,
   formatQty,
   formatDate,
   paymentStatusLabel,
@@ -10,14 +9,11 @@ import {
   computeSalePaymentBreakdown,
 } from '@/lib/utils'
 import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
+import { formatPdfPKR } from '@/lib/pdf-money'
 import type { Sale, SaleItem } from '@/types'
 
-function pdfPKR(paisa: number): string {
-  return formatPKR(paisa).replace('₨', 'Rs.').replace(/\u00A0/g, ' ')
-}
-
 function pdfPetiPrice(pricePerTrayPaisa: number): string {
-  return pdfPKR(pricePerTrayPaisa * 12)
+  return formatPdfPKR(pricePerTrayPaisa * 12)
 }
 
 function preDiscountSubtotalPaisa(items: SaleItem[]): number {
@@ -49,10 +45,7 @@ function itemDiscountNote(item: SaleItem): string | null {
   }
 
   const perPetiRupees = item.discount_value ?? 0
-  return `Discount: Rs. ${perPetiRupees.toLocaleString('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })} per peti`
+  return `Discount: ${formatPdfPKR(Math.round(perPetiRupees * 100))} per peti`
 }
 
 export async function generateInvoicePDF(
@@ -112,7 +105,7 @@ export async function generateInvoicePDF(
 
   const colCategory = margin
   const colQty      = 95
-  const colPrice    = 138
+  const colPrice    = 143
   const colTotal    = pageWidth - margin
 
   doc.setFillColor(245, 245, 244)
@@ -122,7 +115,7 @@ export async function generateInvoicePDF(
   doc.setFontSize(9)
   doc.text('Category',   colCategory, y)
   doc.text('Qty',        colQty,      y)
-  doc.text('Price/peti', colPrice,    y)
+  doc.text('Price/peti', colPrice,    y, { align: 'right' })
   doc.text('Total',      colTotal,    y, { align: 'right' })
 
   y += 10
@@ -141,8 +134,8 @@ export async function generateInvoicePDF(
 
     doc.text(item.egg_category?.name ?? '—', colCategory, y)
     doc.text(formatQty(item.quantity_trays), colQty, y)
-    doc.text(pdfPetiPrice(item.price_per_tray_paisa), colPrice, y)
-    doc.text(pdfPKR(lineTotal), colTotal, y, { align: 'right' })
+    doc.text(pdfPetiPrice(item.price_per_tray_paisa), colPrice, y, { align: 'right' })
+    doc.text(formatPdfPKR(lineTotal), colTotal, y, { align: 'right' })
     y += 6
 
     if (discountNote) {
@@ -179,39 +172,39 @@ export async function generateInvoicePDF(
     overallDiscount > 0 ||
     items.some(itemHasDiscount)
 
-  const labelX = pageWidth - margin - 55
+  const labelX = pageWidth - margin - 80
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.text('Subtotal', labelX, y)
-  doc.text(pdfPKR(preDiscountSubtotal), colTotal, y, { align: 'right' })
+  doc.text(formatPdfPKR(preDiscountSubtotal), colTotal, y, { align: 'right' })
   y += 8
 
   if (hasAnyDiscount && totalDiscount > 0) {
     doc.setTextColor(22, 163, 74)
     doc.text('Discount', labelX, y)
-    doc.text(`- ${pdfPKR(totalDiscount)}`, colTotal, y, { align: 'right' })
+    doc.text(`- ${formatPdfPKR(totalDiscount)}`, colTotal, y, { align: 'right' })
     doc.setTextColor(0, 0, 0)
     y += 8
   }
 
   doc.setFont('helvetica', 'bold')
   doc.text('Total', labelX, y)
-  doc.text(pdfPKR(total), colTotal, y, { align: 'right' })
+  doc.text(formatPdfPKR(total), colTotal, y, { align: 'right' })
   y += 8
 
   doc.setFont('helvetica', 'normal')
 
   if (sale.payment_status === 'paid' || sale.payment_status === 'partial') {
     doc.text('Amount Paid', labelX, y)
-    doc.text(pdfPKR(paid_paisa), colTotal, y, { align: 'right' })
+    doc.text(formatPdfPKR(paid_paisa), colTotal, y, { align: 'right' })
     y += 8
   }
 
   if (sale.payment_status === 'partial' || sale.payment_status === 'unpaid') {
     doc.setFont('helvetica', 'bold')
     doc.text('Balance Due', labelX, y)
-    doc.text(pdfPKR(remaining_paisa), colTotal, y, { align: 'right' })
+    doc.text(formatPdfPKR(remaining_paisa), colTotal, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     y += 8
   }

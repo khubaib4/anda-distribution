@@ -1,4 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
+import { businessDateString } from './business-date'
+import { wholeEggsFromWholeTrays } from './quantity'
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
@@ -105,6 +107,9 @@ export function formatDate(dateStr: string): string {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    // A date-only value is a calendar day; localizing its UTC parse can
+    // display the preceding day in browsers west of UTC.
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? { timeZone: 'UTC' } : {}),
   })
 }
 
@@ -113,12 +118,13 @@ export function formatDateShort(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-PK', {
     day: 'numeric',
     month: 'short',
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? { timeZone: 'UTC' } : {}),
   })
 }
 
 // Today as YYYY-MM-DD for date input default values
 export function todayString(): string {
-  return new Date().toISOString().split('T')[0]
+  return businessDateString()
 }
 
 export function petiPriceStringFromTrayPaisa(pricePerTrayPaisa: number): string {
@@ -200,13 +206,12 @@ export function validateSaleItems(items: unknown):
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item) ||
         typeof item.egg_category_id !== 'string' || !item.egg_category_id ||
-        typeof item.quantity_trays !== 'number' ||
-        !Number.isFinite(item.quantity_trays) || item.quantity_trays <= 0 ||
+        wholeEggsFromWholeTrays(item.quantity_trays) === null ||
         typeof item.price_per_tray_paisa !== 'number' ||
         !Number.isSafeInteger(item.price_per_tray_paisa) ||
         item.price_per_tray_paisa <= 0 ||
         !Number.isSafeInteger(item.quantity_trays * item.price_per_tray_paisa)) {
-      return { ok: false, error: 'Each item needs a category, a finite positive quantity, and a positive safe-integer price in paisa' }
+      return { ok: false, error: 'Each item needs a category, a positive whole-tray quantity, and a positive safe-integer price in paisa' }
     }
 
     const discountType = item.discount_type ?? null
