@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOwnerOnly } from '@/lib/settings-auth'
 
 export async function DELETE(
@@ -59,31 +60,45 @@ export async function PATCH(
   const body = await request.json()
   const { role, permissions } = body
 
-  const updates: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  }
+  const updates: Record<string, unknown> = {}
   if (role        !== undefined) updates.role        = role
   if (permissions !== undefined) updates.permissions = permissions
 
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const { data: member, error } = await supabase
     .from('tenant_members')
     .update(updates)
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
-    .select(`
-      id,
-      user_id,
-      role,
-      permissions,
-      profile:profiles(full_name)
-    `)
-    .single()
+    .select('id, user_id, role, permissions')
+    .maybeSingle()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  if (!member) {
+    return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  }
 
-  return NextResponse.json(data)
+  let profile: { full_name: string | null } | null = null
+  try {
+    const { data, error: profileError } = await createAdminClient()
+      .from('profiles')
+      .select('full_name')
+      .eq('id', member.user_id)
+      .maybeSingle()
+
+    if (profileError) throw profileError
+    profile = data
+  } catch (enrichmentError) {
+    console.error('Tenant member updated but profile enrichment failed', {
+      tenantId,
+      memberId,
+      userId: member.user_id,
+      error: enrichmentError,
+    })
+  }
+
+  return NextResponse.json({ ...member, profile })
 }
