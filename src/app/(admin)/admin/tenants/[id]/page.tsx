@@ -28,7 +28,7 @@ interface Member {
   role:      string
   full_name: string
   email:     string | null
-  joined_at: string
+  joined_at: string | null
 }
 
 interface Invitation {
@@ -252,7 +252,7 @@ export default function AdminTenantDetailPage({
                     {m.role}
                   </span>
                   <p className="text-xs text-stone-400 mt-1">
-                    Joined {formatDate(m.joined_at)}
+                    {m.joined_at ? `Joined ${formatDate(m.joined_at)}` : 'Join date unavailable'}
                   </p>
                 </div>
               </div>

@@ -52,7 +52,7 @@ async function enrichMembers(
     id: string
     user_id: string
     role: string
-    created_at: string
+    joined_at: string | null
   }>,
   profileNames: ReadonlyMap<string, string | null>,
 ) {
@@ -74,7 +74,7 @@ async function enrichMembers(
         role:       m.role,
         full_name:  profileNames.get(m.user_id) ?? '—',
         email,
-        joined_at:  m.created_at,
+        joined_at:  m.joined_at,
       }
     }),
   )
@@ -115,9 +115,9 @@ export async function GET(
     enrichTenant(tenant),
     admin
       .from('tenant_members')
-      .select('id, user_id, role, created_at')
+      .select('id, user_id, role, joined_at')
       .eq('tenant_id', id)
-      .order('created_at', { ascending: true }),
+      .order('joined_at', { ascending: true }),
     admin
       .from('invitations')
       .select('id, email, role, expires_at, created_at')
