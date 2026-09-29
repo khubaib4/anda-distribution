@@ -5,6 +5,7 @@ import {
   formatPKR,
   formatQty,
 } from '@/lib/utils'
+import { businessDateString, shiftCalendarDate } from '@/lib/business-date'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
@@ -88,7 +89,7 @@ export default function ReportsPage() {
   const { permissions } = useTenant()
   const tenantFetch = useTenantFetch()
 
-  const today      = new Date().toISOString().split('T')[0]
+  const today      = businessDateString()
   const monthStart = today.slice(0, 7) + '-01'
 
   const [from, setFrom] = useState(monthStart)
@@ -121,11 +122,7 @@ export default function ReportsPage() {
   // Quick range presets
   const presets = [
     { label: 'This month', from: monthStart,                          to: today },
-    { label: 'Last 7 days', from: (() => {
-        const d = new Date()
-        d.setDate(d.getDate() - 7)
-        return d.toISOString().split('T')[0]
-      })(),                                                             to: today },
+    { label: 'Last 7 days', from: shiftCalendarDate(today, -7),      to: today },
     { label: 'This year',  from: today.slice(0, 4) + '-01-01',       to: today },
   ]
 

@@ -138,6 +138,51 @@ export async function POST(request: Request) {
     )
   }
 
+  const { data: customer, error: customerError } = await supabase
+    .from('customers')
+    .select('id')
+    .eq('id', customer_id)
+    .eq('tenant_id', writeTenantId)
+    .maybeSingle()
+
+  if (customerError) {
+    return NextResponse.json({ error: customerError.message }, { status: 500 })
+  }
+  if (!customer) {
+    return NextResponse.json({ error: 'Customer not found' }, { status: 400 })
+  }
+
+  const willCreatePayment = totalPaisa > 0 && (
+    payment_status === 'paid' || (
+      payment_status === 'partial' &&
+      amount_paid_paisa &&
+      amount_paid_paisa > 0
+    )
+  )
+
+  if (willCreatePayment && bank_account_id != null && bank_account_id !== '') {
+    if (typeof bank_account_id !== 'string' || !bank_account_id.trim()) {
+      return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+    }
+
+    const { data: bankAccount, error: bankAccountError } = await supabase
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bank_account_id)
+      .eq('tenant_id', writeTenantId)
+      .maybeSingle()
+
+    if (bankAccountError) {
+      if (bankAccountError.code === '22P02') {
+        return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+      }
+      return NextResponse.json({ error: bankAccountError.message }, { status: 500 })
+    }
+    if (!bankAccount) {
+      return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+    }
+  }
+
   const stockAvailability = await validateSaleStockAvailability({
     supabase,
     tenantId: writeTenantId,

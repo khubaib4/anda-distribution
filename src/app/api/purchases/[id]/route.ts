@@ -189,6 +189,9 @@ export async function PATCH(
 
     for (const item of items) {
       if (
+        !item ||
+        typeof item !== 'object' ||
+        Array.isArray(item) ||
         typeof item.price_per_tray_paisa !== 'number' ||
         !Number.isFinite(item.price_per_tray_paisa) ||
         item.price_per_tray_paisa <= 0

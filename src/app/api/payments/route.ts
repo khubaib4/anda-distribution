@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
+import { businessDateString } from '@/lib/business-date'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -84,13 +85,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Customer not found' }, { status: 400 })
   }
 
+  if (bank_account_id != null && bank_account_id !== '') {
+    if (
+      typeof bank_account_id !== 'string' ||
+      !bank_account_id.trim()
+    ) {
+      return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+    }
+
+    const { data: bankAccount, error: bankAccountError } = await supabase
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bank_account_id)
+      .eq('tenant_id', writeTenantId)
+      .maybeSingle()
+
+    if (bankAccountError) {
+      if (bankAccountError.code === '22P02') {
+        return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+      }
+      return NextResponse.json({ error: bankAccountError.message }, { status: 500 })
+    }
+    if (!bankAccount) {
+      return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+    }
+  }
+
   const { data, error } = await supabase
     .from('customer_payments')
     .insert({
       tenant_id:      writeTenantId,
       customer_id,
       amount_paisa,
-      payment_date:   payment_date   || new Date().toISOString().split('T')[0],
+      payment_date:   payment_date   || businessDateString(),
       payment_method: payment_method || null,
       reference:      reference      || null,
       notes:          notes          || null,

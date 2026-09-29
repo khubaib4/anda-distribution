@@ -7,9 +7,9 @@ import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import {
   todayString,
   formatEggs,
-  traysToEggs,
   formatPKRDecimal,
 } from '@/lib/utils'
+import { isPositiveWholeEggCount, wholeEggsFromTrays } from '@/lib/quantity'
 
 interface Props {
   onClose: () => void
@@ -42,15 +42,14 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState<string | null>(null)
 
-  const parsedQty = parseFloat(quantityInput) || 0
+  const parsedQty = Number(quantityInput)
 
   const conversionText = useMemo(() => {
-    if (parsedQty <= 0) return null
     if (quantityUnit === 'eggs') {
-      const eggs = Math.round(parsedQty)
-      return formatEggs(eggs)
+      return isPositiveWholeEggCount(parsedQty) ? formatEggs(parsedQty) : null
     }
-    return `= ${traysToEggs(parsedQty)} eggs`
+    const eggs = wholeEggsFromTrays(parsedQty)
+    return eggs === null ? null : `= ${eggs} eggs`
   }, [parsedQty, quantityUnit])
 
   const pricePerTrayText = useMemo(() => {
@@ -69,8 +68,12 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
       setError('Please select an egg category')
       return
     }
-    if (parsedQty <= 0) {
-      setError('Quantity must be greater than 0')
+    if (quantityUnit === 'eggs' && !isPositiveWholeEggCount(parsedQty)) {
+      setError('Egg quantity must be a whole number greater than 0')
+      return
+    }
+    if (quantityUnit === 'trays' && wholeEggsFromTrays(parsedQty) === null) {
+      setError('Tray quantity must equal a whole number of eggs greater than 0')
       return
     }
     if (movementType === 'adjustment_out' && !finalReason) {
@@ -89,7 +92,7 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
     }
 
     if (quantityUnit === 'eggs') {
-      payload.quantity_eggs = Math.round(parsedQty)
+      payload.quantity_eggs = parsedQty
     } else {
       payload.quantity_trays = parsedQty
     }
