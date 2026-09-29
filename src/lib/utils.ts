@@ -136,8 +136,7 @@ export function petiPriceStringFromTrayPaisa(pricePerTrayPaisa: number): string 
 // Generate invoice number
 // PUR-20250612-482 or SAL-20250612-482
 export function generateInvoiceNumber(prefix: 'PUR' | 'SAL'): string {
-  const date = new Date()
-  const dateStr = date.toISOString().split('T')[0].replace(/-/g, '')
+  const dateStr = businessDateString().replace(/-/g, '')
   const rand = Math.floor(Math.random() * 900 + 100)
   return `${prefix}-${dateStr}-${rand}`
 }
