@@ -9,7 +9,7 @@ Last refreshed: 2026-09-30. Production deployment and smoke-test status below is
 - DE-18 atomic invoice counters are deployed and production-verified.
 - Production smoke test on tenant `Testing`: purchase `PUR-0004`, sale `SAL-0008`; `invoice_counters` advanced to purchase=4 and sale=8. These are recorded verification results, not a live counter reading.
 - DE-18 maintains independent sale and purchase counters per tenant. Invoice numbers are never reused; gaps are allowed.
-- DE-05 inventory costing architecture is fully approved but not implemented. Next implementation: schema foundation.
+- DE-05 inventory costing architecture is fully approved. The inactive schema foundation is prepared locally in `20260930180615_de05_inactive_inventory_foundation.sql`, independently reviewed and tested on isolated PostgreSQL 17.6. It is not deployed or activated. See `supabase/verification/de05-foundation.md`; later work starts with the security/trusted-posting gate.
 - Existing operational transaction data is test data. The approved DE-05 cutover requires a coordinated test-ledger reset after snapshot, followed by fresh priced opening stock. DE-18 counters must never be reset during cutover.
 
 ## 1. Project Overview
@@ -457,7 +457,7 @@ Existing setup:
 - ESLint is configured through `eslint.config.mjs` using `eslint-config-next/core-web-vitals` and TypeScript rules.
 - TypeScript strict mode is enabled in `tsconfig.json`.
 - No `test`, `typecheck`, Jest, Vitest, Playwright, or Cypress scripts were found in `package.json`.
-- No test files were found in the inspected source tree.
+- Automated Node regression tests are present in `tests/`; run `node --test tests/*.test.mjs`. DE-05 has a separate real PostgreSQL test runner: `node tests/de05-foundation-db.mjs`, using a disposable Docker container and synthetic data.
 
 Recommended manual checklist:
 
@@ -486,19 +486,20 @@ Costing method, invoice gap policy, and staff permission override behavior are s
 
 ## 18. DE-05 Approved Inventory Costing Architecture
 
-Status: fully approved, not implemented. Begin with the schema foundation; the rules below describe the target, not current production behavior.
+Status: fully approved. The inactive schema foundation is prepared and locally tested; the valuation engine and integrations remain unimplemented. Production still uses current stock behavior. The rules below describe the target.
 
 ### Authoritative inventory and costing
 
 - Use moving weighted-average inventory cost.
 - Maintain inventory state per tenant and egg category.
 - Exact authoritative quantity is eggs; exact authoritative inventory value is integer paisa.
+- Quantity and value must remain nonnegative. Zero eggs requires zero value; remaining eggs may have zero value after integer-paisa rounding.
 - Save each sale's COGS permanently as an exact total. Later purchases never restate prior sale COGS.
 - Do not automatically restate historical COGS.
 
 ### Stock operation rules
 
-- Opening stock requires explicit positive cost.
+- New opening stock is only valid as the first valued operation for an empty tenant/category balance and requires explicit positive cost; add exact quantity and value.
 - Adjustment-in requires explicit positive cost or may inherit a known moving average.
 - Adjustment-out removes inventory value at the current moving average.
 - The first release rejects out-of-order/backdated stock operations.
