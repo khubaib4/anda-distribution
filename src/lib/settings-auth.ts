@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { requireTenant, type TenantContextResult } from '@/lib/tenant'
-import { requireSuperAdminTenantSelection } from '@/lib/tenant-api'
 
 type OwnerSettingsAuth =
   | { ctx: TenantContextResult; tenantId: string }
@@ -14,14 +13,9 @@ export async function requireOwnerSettings(request: Request): Promise<OwnerSetti
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!ctx.isSuperAdmin && ctx.role !== 'owner') {
+  void request
+  if (ctx.isSuperAdmin || ctx.role !== 'owner') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  if (ctx.isSuperAdmin) {
-    const tenantId = await requireSuperAdminTenantSelection(request)
-    if (tenantId instanceof NextResponse) return tenantId
-    return { ctx, tenantId }
   }
 
   if (!ctx.tenantId) {
@@ -40,7 +34,7 @@ export async function requireOwnerOnly(request: Request): Promise<OwnerSettingsA
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (ctx.role !== 'owner') {
+  if (ctx.isSuperAdmin || ctx.role !== 'owner') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

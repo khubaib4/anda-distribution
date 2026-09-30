@@ -43,15 +43,15 @@ const permissions = await loadSource(
   '({ ownerPermissions, modulePermissionKeys, getDefaultPermissions, resolvePermissions, storedModuleOverrides, validateModuleOverrides, hasModulePermission })',
 )
 
-test('owner and super-admin always have full permissions', () => {
+test('owners have full business permissions and platform admins have none', () => {
   for (const role of ['owner', 'super_admin']) {
     const resolved = permissions.resolvePermissions(role, {
       reports: false,
       canViewSettings: false,
       canDeleteRecords: false,
     })
-    assert.ok(Object.values(resolved).every(value => value === true))
-    assert.deepEqual(plain(resolved), plain(permissions.ownerPermissions))
+    assert.ok(Object.values(resolved).every(value => value === (role === 'owner')))
+    if (role === 'owner') assert.deepEqual(plain(resolved), plain(permissions.ownerPermissions))
   }
 })
 
@@ -191,15 +191,15 @@ test('tenant context reads stored permissions and fails closed on lookup errors'
   })).result, null)
   const superAdmin = await loadContext({ superAdmin: true })
   assert.equal(superAdmin.result.isSuperAdmin, true)
-  assert.equal(superAdmin.result.tenantId, tenantId)
-  assert.ok(Object.values(superAdmin.result.permissions).every(value => value === true))
+  assert.equal(superAdmin.result.tenantId, null)
+  assert.ok(Object.values(superAdmin.result.permissions).every(value => value === false))
   const superAdminWithoutMembership = await loadContext({ superAdmin: true, member: null })
   assert.equal(superAdminWithoutMembership.result.isSuperAdmin, true)
   assert.equal(superAdminWithoutMembership.result.tenantId, null)
-  assert.ok(Object.values(superAdminWithoutMembership.result.permissions).every(value => value === true))
+  assert.ok(Object.values(superAdminWithoutMembership.result.permissions).every(value => value === false))
 })
 
-test('/api/me returns resolved staff permissions and preserves super-admin selection', async () => {
+test('/api/me returns staff permissions but never grants platform admins a business identity', async () => {
   const calls = []
   const GET = await loadSource('src/app/api/me/route.ts', 'GET', {
     getTenantContext: async () => calls.at(-1),
@@ -240,19 +240,19 @@ test('/api/me returns resolved staff permissions and preserves super-admin selec
   assert.equal(unscoped.status, 200)
   assert.equal(unscoped.body.tenantId, null)
   assert.equal(unscoped.body.selectedTenantId, null)
-  assert.equal(unscoped.body.permissions.canViewReports, true)
+  assert.equal(unscoped.body.permissions.canViewReports, false)
 
   const selected = await GET({ url: `http://localhost/api/me?tenant_id=${tenantId}` })
   assert.equal(selected.status, 200)
-  assert.equal(selected.body.selectedTenantId, tenantId)
-  assert.equal(selected.body.tenantName, 'Doctor’s Egg')
+  assert.equal(selected.body.selectedTenantId, null)
+  assert.equal(selected.body.tenantName, null)
 
   const invalid = await GET({ url: 'http://localhost/api/me?tenant_id=bad' })
-  assert.equal(invalid.status, 400)
-  assert.equal(invalid.body.code, 'TENANT_SELECTION_INVALID')
+  assert.equal(invalid.status, 200)
+  assert.equal(invalid.body.tenantId, null)
 })
 
-test('authorizeApi optional module guard denies staff and retains tenant selection', async () => {
+test('authorizeApi preserves membership scope and always denies platform admins', async () => {
   let current = context('staff', { sales: false })
   const authorizeApi = await loadSource('src/lib/tenant-api.ts', 'authorizeApi', {
     getTenantContext: async () => current,
@@ -275,10 +275,10 @@ test('authorizeApi optional module guard denies staff and retains tenant selecti
   assert.equal((await authorizeApi(request, { permission: 'customers' })).tenantId, tenantId)
 
   current = context('super_admin')
-  assert.equal((await authorizeApi(request, { permission: 'sales' })).status, 400)
+  assert.equal((await authorizeApi(request, { permission: 'sales' })).status, 403)
   const selected = await authorizeApi({ url: `http://localhost/api/sales?tenant_id=${tenantId}` },
     { permission: 'sales' })
-  assert.equal(selected.tenantId, tenantId)
+  assert.equal(selected.status, 403)
 })
 
 async function loadMemberPatch(options = {}) {

@@ -1,14 +1,19 @@
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
+import { getTenantContext } from '@/lib/tenant'
 import Sidebar from '@/components/sidebar'
 import MobileHeader from '@/components/mobile-header'
 import MobileBottomNav from '@/components/mobile-bottom-nav'
 import TenantProvider from '@/components/providers/tenant-provider'
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const ctx = await getTenantContext()
+  if (ctx?.isSuperAdmin || ctx?.role === 'super_admin') redirect('/admin')
+
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500">

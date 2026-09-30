@@ -5,8 +5,6 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   Pencil,
-  Copy,
-  Check,
   AlertTriangle,
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
@@ -57,7 +55,6 @@ export default function AdminTenantDetailPage({
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
-  const [copied,      setCopied]      = useState(false)
   const [deactivating,setDeactivating]= useState(false)
 
   async function load() {
@@ -104,13 +101,6 @@ export default function AdminTenantDetailPage({
 
     setTenant(prev => prev ? { ...prev, is_active: data.is_active } : prev)
     setDeactivating(false)
-  }
-
-  async function handleCopyTenantId() {
-    if (!tenant) return
-    await navigator.clipboard.writeText(tenant.id)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   if (loading) {
@@ -291,37 +281,10 @@ export default function AdminTenantDetailPage({
       <div className="card p-5">
         <p className="section-title">Quick actions</p>
         <div className="mt-4 space-y-4">
-          <div>
-            <p className="text-sm text-stone-600 mb-2">
-              Login as this tenant — append{' '}
-              <code className="text-xs bg-stone-100 px-1 py-0.5 rounded">
-                ?tenant_id=
-              </code>{' '}
-              to dashboard API calls and settings pages when signed in as super admin.
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs bg-stone-50 border border-stone-200
-                               rounded px-2 py-1.5 truncate">
-                {tenant.id}
-              </code>
-              <button
-                type="button"
-                onClick={handleCopyTenantId}
-                className="btn-secondary p-2 flex-shrink-0"
-                aria-label="Copy tenant ID"
-              >
-                {copied
-                  ? <Check className="w-4 h-4 text-success" />
-                  : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <Link
-              href={`/?tenant_id=${tenant.id}`}
-              className="btn-primary inline-flex mt-3 text-sm"
-            >
-              Open dashboard as tenant
-            </Link>
-          </div>
+          <p className="text-sm text-stone-600">
+            Platform administrators manage business setup, plans and status.
+            Business records are private to each business’s owner and staff.
+          </p>
           <div>
             <button
               type="button"

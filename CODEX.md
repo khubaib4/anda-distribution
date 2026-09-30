@@ -22,7 +22,7 @@ Doctor's Egg is a multi-tenant egg distribution system for sales, purchases, cus
 
 - Authenticate and authorize every business API request. Scope every read, write, update, delete, and related-record lookup to the intended `tenant_id`.
 - Verify referenced customers, suppliers, categories, accounts, partners, and parent records belong to the same tenant before using their IDs.
-- Handle super-admin access with an explicit tenant scope where business data is involved; never allow an absent or optional tenant filter to broaden access accidentally.
+- Platform super-admins must never view or modify tenant business records, even with explicit tenant selection or tenant membership. Keep platform setup/plan/status management separate from business APIs and database access.
 - The admin Supabase client can bypass row-level security. Do not assume RLS, database constraints, or cascades exist: their definitions are not in this repository. Enforce access in server code and review database policy implications.
 - Check API permissions for staff and owners; UI-only permission checks are insufficient.
 

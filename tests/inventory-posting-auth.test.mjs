@@ -70,25 +70,21 @@ test('future gate requires login, module permission, and separate deletion permi
     assert.equal((await gate.check(request(), operation, action)).status, status)
     assert.equal(gate.calls.length, 0)
   }
-  for (const role of ['owner', 'super_admin']) {
+  for (const role of ['owner']) {
     const gate = await setup({ role })
     assert.ok(!(await gate.check(request(role === 'super_admin' ? `?tenant_id=${tenantB}` : ''), 'purchase', 'delete') instanceof NextResponse))
     assert.equal(gate.calls.length, 1)
   }
 })
 
-test('super-admin must explicitly select a valid existing tenant, including when also a member', async () => {
-  for (const [query, status] of [['', 400], ['?tenant_id=', 400], ['?tenant_id=bad', 400], [`?tenant_id=${tenantA}`, 404]]) {
-    const gate = await setup({ role: 'super_admin' })
-    assert.equal((await gate.check(request(query), 'sale', 'create')).status, status)
-    assert.equal(gate.calls.length, 0)
+test('platform admins are denied before any database call, even with membership/selection', async () => {
+  for (const query of ['', '?tenant_id=', '?tenant_id=bad', `?tenant_id=${tenantA}`, `?tenant_id=${tenantB}`]) {
+    for (const operation of ['sale', 'purchase', 'opening_stock', 'adjustment_in', 'adjustment_out']) {
+      const gate = await setup({ role: 'super_admin' })
+      assert.equal((await gate.check(request(query), operation, 'create')).status, 403)
+      assert.equal(gate.calls.length, 0)
+    }
   }
-  const valid = await setup({ role: 'super_admin' })
-  assert.equal((await valid.check(request(`?tenant_id=${tenantB}`), 'sale', 'create')).tenantId, tenantB)
-  assert.equal(valid.calls[0].args.p_tenant_id, tenantB)
-  const unavailable = await setup({ role: 'super_admin', tenantError: { message: 'private' } })
-  assert.equal((await unavailable.check(request(`?tenant_id=${tenantB}`), 'sale', 'create')).status, 500)
-  assert.equal(unavailable.calls.length, 0)
 })
 
 test('unknown operations and unsupported manual-stock revisions never reach the database', async () => {

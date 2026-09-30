@@ -41,16 +41,7 @@ export function scopeTenantFetchInput(
       !isTenantBusinessPath(target.pathname)) return input
   if (!scope.isSuperAdmin) return input
 
-  if (!scope.selectedTenantId || scope.tenantId !== scope.selectedTenantId) {
-    throw new Error('Validated tenant selection is required for business requests')
-  }
-
-  target.searchParams.set('tenant_id', scope.selectedTenantId)
-  if (input instanceof Request) return new Request(target.href, input)
-  if (input instanceof URL) return target
-  return original.startsWith('/')
-    ? `${target.pathname}${target.search}${target.hash}`
-    : target.href
+  throw new Error('Platform administrators cannot access business records')
 }
 
 export function useTenantFetch() {

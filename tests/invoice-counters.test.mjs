@@ -278,28 +278,14 @@ test('ordinary users cannot select another tenant through the route query string
   assert.equal(h.counters.get(`${tenantB}:sale`), 4)
 })
 
-test('selected super-admin routes use the service-role-only allocator', async () => {
+test('platform admins never reach invoice allocation or writes, regardless of tenant selection', async () => {
   const h = makeHarness()
   h.setActor('super_admin')
-  h.setSelection(tenantB)
-  assert.equal((await h.sale()).body.invoice_number, 'SAL-0005')
-  assert.equal((await h.purchase()).body.invoice_number, 'PUR-0005')
-  assert.deepEqual(h.calls.rpc.map(call => [call.channel, call.name, call.args.p_tenant_id]), [
-    ['service_role', 'allocate_invoice_number_trusted_v1', tenantB],
-    ['service_role', 'allocate_invoice_number_trusted_v1', tenantB],
-  ])
-})
-
-test('unselected, invalid, and unknown super-admin tenants fail before allocation', async () => {
-  const h = makeHarness()
-  h.setActor('super_admin')
-  for (const [selection, status] of [
-    [null, 400], ['invalid', 400],
-    ['33333333-3333-4333-8333-333333333333', 404],
-  ]) {
+  for (const selection of [null, 'invalid', tenantA, tenantB,
+    '33333333-3333-4333-8333-333333333333']) {
     h.setSelection(selection)
-    assert.equal((await h.sale()).status, status)
-    assert.equal((await h.purchase()).status, status)
+    assert.equal((await h.sale()).status, 403)
+    assert.equal((await h.purchase()).status, 403)
   }
   assert.equal(h.calls.rpc.length, 0)
   assert.equal(h.calls.writes.length, 0)

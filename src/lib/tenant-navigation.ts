@@ -36,13 +36,5 @@ export function scopeTenantNavigationHref(
     return href
   }
 
-  if (scope.selectedTenantId &&
-      scope.tenantId?.toLowerCase() === scope.selectedTenantId.toLowerCase()) {
-    url.searchParams.set('tenant_id', scope.selectedTenantId)
-  } else {
-    // Without a validated selection, let TenantProvider show its chooser.
-    url.searchParams.delete('tenant_id')
-  }
-
-  return `${url.pathname}${url.search}${url.hash}`
+  return '/admin'
 }

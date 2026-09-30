@@ -30,7 +30,7 @@ export async function authorizeInventoryPosting(
     return NextResponse.json({ error: 'Invalid inventory operation' }, { status: 400 })
   }
 
-  // Uses verified session identity and existing explicit super-admin selection.
+  // Uses verified session identity; platform super-admins are denied.
   // Ordinary members always use their membership tenant, ignoring URL overrides.
   const auth = await authorizeApi(request, { permission: operationModules[operation] })
   if (auth instanceof NextResponse) return auth

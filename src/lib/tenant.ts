@@ -37,7 +37,7 @@ export async function getTenantContext(): Promise<TenantContextResult | null> {
     if (superAdmin.data) {
       return {
         userId:       user.id,
-        tenantId:     membership.data?.tenant_id ?? null,
+        tenantId:     null,
         role:         'super_admin',
         isSuperAdmin: true,
         permissions:  resolvePermissions('super_admin', null),

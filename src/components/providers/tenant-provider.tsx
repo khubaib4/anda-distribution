@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cache } from '@/lib/cache'
@@ -20,7 +19,7 @@ interface ProviderState {
   ctx:       TenantContextValue | null
   loading:   boolean
   selection: string | null
-  issue:     'select_tenant' | 'invalid_tenant' | 'tenant_not_found' | 'retry' | null
+  issue:     'retry' | null
 }
 
 export default function TenantProvider({ children }: Props) {
@@ -79,7 +78,7 @@ export default function TenantProvider({ children }: Props) {
       }))
     }
 
-    const { data, status, errorCode } = await fetchTenantContext(
+    const { data, status } = await fetchTenantContext(
       requestedSelection, controller.signal,
     )
     if (identityController.current === controller) identityController.current = null
@@ -119,33 +118,22 @@ export default function TenantProvider({ children }: Props) {
     if (status !== 200 || !data) {
       resolvedIdentity.current = null
       cache.clear()
-      const issue = errorCode === 'TENANT_SELECTION_INVALID'
-        ? 'invalid_tenant'
-        : errorCode === 'TENANT_NOT_FOUND'
-          ? 'tenant_not_found'
-          : 'retry'
-      setState({ ctx: null, loading: false, selection: requestedSelection, issue })
+      setState({ ctx: null, loading: false, selection: requestedSelection, issue: 'retry' })
       return
     }
 
-    const selectedTenantMatches = requestedSelection !== null &&
-      data.selectedTenantId?.toLowerCase() === requestedSelection.toLowerCase() &&
-      data.tenantId?.toLowerCase() === requestedSelection.toLowerCase()
-    if (data.isSuperAdmin && (requestedSelection === null
-      ? data.selectedTenantId !== null || data.tenantId !== null
-      : !selectedTenantMatches)) {
+    if (data.isSuperAdmin || data.role === 'super_admin') {
       resolvedIdentity.current = null
       cache.clear()
-      setState({
-        ctx: null, loading: false, selection: requestedSelection, issue: 'invalid_tenant',
-      })
+      setState({ ctx: null, loading: false, selection: requestedSelection, issue: null })
+      routerRef.current.replace('/admin')
       return
     }
 
     // A hidden tab must verify again when it returns before mounting children.
     if (document.visibilityState === 'hidden') return
 
-    const effectiveTenantId = data.isSuperAdmin ? data.selectedTenantId : data.tenantId
+    const effectiveTenantId = data.tenantId
     const previous = resolvedIdentity.current
     if (previous &&
         (previous.userId !== data.userId || previous.tenantId !== effectiveTenantId)) {
@@ -155,11 +143,11 @@ export default function TenantProvider({ children }: Props) {
     setState({
       loading: false,
       selection: requestedSelection,
-      issue: data.isSuperAdmin && !effectiveTenantId ? 'select_tenant' : null,
+      issue: null,
       ctx: {
         ...data,
         tenantId: effectiveTenantId,
-        selectedTenantId: data.isSuperAdmin ? data.selectedTenantId : null,
+        selectedTenantId: null,
       },
     })
   }, [])
@@ -277,37 +265,19 @@ export default function TenantProvider({ children }: Props) {
   }
 
   if (state.issue) {
-    const title = state.issue === 'select_tenant'
-      ? 'Select a tenant'
-      : state.issue === 'invalid_tenant'
-        ? 'Invalid tenant selection'
-        : state.issue === 'tenant_not_found'
-          ? 'Tenant unavailable'
-          : 'Unable to verify tenant'
-    const message = state.issue === 'select_tenant'
-      ? 'Choose a tenant to open its business dashboard.'
-      : state.issue === 'invalid_tenant'
-        ? 'The tenant ID in this link is invalid.'
-        : state.issue === 'tenant_not_found'
-          ? 'This tenant no longer exists or is unavailable.'
-          : 'The tenant could not be verified. Please try again.'
-
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-6">
         <div className="card max-w-md w-full p-6 space-y-4">
-          <h1 className="text-xl font-semibold">{title}</h1>
-          <p className="text-sm text-stone-600">{message}</p>
+          <h1 className="text-xl font-semibold">Unable to verify your business</h1>
+          <p className="text-sm text-stone-600">Please try again.</p>
           <div className="flex items-center gap-4">
-            <Link href="/admin/tenants" className="btn-primary">Choose tenant</Link>
-            {state.issue === 'retry' && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void revalidateIdentity('retry')}
-              >
-                Retry
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void revalidateIdentity('retry')}
+            >
+              Retry
+            </button>
           </div>
         </div>
       </div>

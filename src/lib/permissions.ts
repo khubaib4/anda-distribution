@@ -99,7 +99,10 @@ export function validateModuleOverrides(
 }
 
 export function getDefaultPermissions(role: string): Permissions {
-  if (role === 'super_admin' || role === 'owner') {
+  if (role === 'super_admin') {
+    return Object.fromEntries(Object.keys(ownerPermissions).map(key => [key, false])) as Permissions
+  }
+  if (role === 'owner') {
     return { ...ownerPermissions }
   }
   return { ...staffPermissions }

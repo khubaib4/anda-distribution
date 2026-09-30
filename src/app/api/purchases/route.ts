@@ -158,10 +158,8 @@ export async function POST(request: Request) {
     }
   }
 
-  const invoiceClient = auth.ctx.isSuperAdmin ? createAdminClient() : supabase
-  const invoiceAllocator = auth.ctx.isSuperAdmin
-    ? 'allocate_invoice_number_trusted_v1'
-    : 'allocate_invoice_number_v1'
+  const invoiceClient = supabase
+  const invoiceAllocator = 'allocate_invoice_number_v1'
   const { data: invoice_number, error: invoiceError } = await invoiceClient.rpc(
     invoiceAllocator,
     { p_tenant_id: writeTenantId, p_counter_type: 'purchase' },

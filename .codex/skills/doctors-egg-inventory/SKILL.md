@@ -59,7 +59,7 @@ DE-05 includes the minimum required DE-03/DE-09 transaction/concurrency slice. D
 
 - Scope every inventory state and operation to the authorized tenant. Related customer, supplier, category, and account references must belong to that tenant.
 - Preserve DE-19 module permissions and DE-SECURITY-01 trusted-write boundaries. Do not bypass RLS or security functions to make tests pass.
-- Super-admin business operations require the approved explicit tenant selection/trusted path.
+- Platform super-admins must never view or modify tenant business data, including inventory operations, even with explicit tenant selection or tenant membership. Owners and permitted staff use authorized tenant paths; platform setup/plan/status management remains separate.
 - DE-18 is deployed: invoice allocation is atomic and per tenant, with independent sale/purchase counters; numbers are never reused and gaps are allowed. Never reintroduce `COUNT(*)` or `MAX()+1` issuance.
 - DE-05 may later call the SQL allocator within transactional posting. DE-05 cutover must never reset invoice counters.
 
