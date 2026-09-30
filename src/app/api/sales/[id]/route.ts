@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
 import { validateSaleStockAvailability } from '@/lib/stock-availability'
 import {
@@ -96,7 +97,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'sales' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -317,7 +318,7 @@ export async function PATCH(
     updates.paid_by_partner_source = paidBy === 'partner' ? paid_by_partner_source : null
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await createAdminClient()
     .from('sales')
     .update(updates)
     .eq('id', id)
@@ -450,6 +451,7 @@ export async function PATCH(
         customerId: allocationCustomerId,
         ...(await recalculateCustomerSaleAllocations({
           supabase,
+          trustedWriter: createTrustedHeaderWriter(),
           tenantId: writeTenantId,
           customerId: allocationCustomerId,
         })),

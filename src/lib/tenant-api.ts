@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getTenantContext, type TenantContextResult } from '@/lib/tenant'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { hasModulePermission, type ModulePermission } from '@/lib/permissions'
 
 const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -74,6 +75,7 @@ export type ApiAuthResult = {
 
 export async function authorizeApi(
   request: Request,
+  options: { permission?: ModulePermission } = {},
 ): Promise<ApiAuthResult | NextResponse> {
   const ctx = await getTenantContext()
   if (!ctx) {
@@ -82,11 +84,18 @@ export async function authorizeApi(
 
   if (!ctx.isSuperAdmin) {
     if (!ctx.tenantId) return apiUnauthorized()
+    if (options.permission && !hasModulePermission(ctx.permissions, options.permission)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     return { ctx, tenantId: ctx.tenantId }
   }
 
   const tenantId = await requireSuperAdminTenantSelection(request)
   if (tenantId instanceof NextResponse) return tenantId
+
+  if (options.permission && !hasModulePermission(ctx.permissions, options.permission)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   return { ctx, tenantId }
 }

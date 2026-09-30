@@ -22,6 +22,8 @@ const routes = [
     primaryTable: 'customers',
     paymentTable: 'customer_payments',
     allocationName: 'recalculateCustomerSaleAllocations',
+    permission: 'customers',
+    otherPermission: 'sales',
   },
   {
     name: 'supplier',
@@ -31,11 +33,13 @@ const routes = [
     primaryTable: 'suppliers',
     paymentTable: 'supplier_payments',
     allocationName: 'recalculateSupplierPurchaseAllocations',
+    permission: 'suppliers',
+    otherPermission: 'purchases',
   },
 ]
 
 async function loadPost(route, options = {}) {
-  const calls = { lookups: [], inserts: [], allocations: [] }
+  const calls = { lookups: [], inserts: [], allocations: [], permissions: [], adminClients: 0 }
   const records = {
     [route.primaryTable]: options.primaryMissing
       ? null
@@ -45,47 +49,57 @@ async function loadPost(route, options = {}) {
       : { id: options.accountId ?? accountId, tenant_id: options.accountTenantId ?? tenantId },
   }
 
+  function from(table, trusted) {
+    const filters = {}
+    let insertedRow
+    return {
+      select() { return this },
+      eq(column, value) { filters[column] = value; return this },
+      async maybeSingle() {
+        calls.lookups.push({ table, filters: { ...filters } })
+        if (table === 'bank_accounts' && options.accountLookupError) {
+          const error = new Error('Account lookup failed')
+          error.code = options.accountLookupErrorCode
+          return { data: null, error }
+        }
+        const record = records[table]
+        const found = record && record.id === filters.id && record.tenant_id === filters.tenant_id
+        return { data: found ? { id: record.id } : null, error: null }
+      },
+      insert(row) {
+        assert.equal(trusted, true, 'payment insert must use trusted admin client')
+        calls.inserts.push({ table, row, trusted })
+        insertedRow = row
+        return this
+      },
+      async single() {
+        return { data: { id: 'payment-1', ...insertedRow }, error: null }
+      },
+    }
+  }
   const supabase = {
     auth: { getUser: async () => ({ data: { user: { id: 'user-1' } } }) },
-    from(table) {
-      const filters = {}
-      let insertedRow
-      return {
-        select() { return this },
-        eq(column, value) { filters[column] = value; return this },
-        async maybeSingle() {
-          calls.lookups.push({ table, filters: { ...filters } })
-          if (table === 'bank_accounts' && options.accountLookupError) {
-            const error = new Error('Account lookup failed')
-            error.code = options.accountLookupErrorCode
-            return { data: null, error }
-          }
-          const record = records[table]
-          const found = record && record.id === filters.id && record.tenant_id === filters.tenant_id
-          return { data: found ? { id: record.id } : null, error: null }
-        },
-        insert(row) {
-          calls.inserts.push({ table, row })
-          insertedRow = row
-          return this
-        },
-        async single() {
-          return { data: { id: 'payment-1', ...insertedRow }, error: null }
-        },
-      }
-    },
+    from(table) { return from(table, false) },
   }
+  const admin = { from(table) { return from(table, true) } }
 
   class NextResponse {
     static json(body, options = {}) {
-      return { status: options.status ?? 200, body }
+      return Object.assign(new NextResponse(), { status: options.status ?? 200, body })
     }
   }
 
   const context = {
     createClient: async () => supabase,
+    createAdminClient: () => { calls.adminClients++; return admin },
     NextResponse,
-    authorizeApi: async () => ({ tenantId }),
+    authorizeApi: async (_request, authOptions) => {
+      calls.permissions.push(authOptions?.permission)
+      if (!authOptions?.permission || options.permissions?.[authOptions.permission] === false) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      return { tenantId }
+    },
     tenantEq: query => query,
     requireWriteTenantId: id => id,
     businessDateString: () => '2026-09-29',
@@ -94,6 +108,7 @@ async function loadPost(route, options = {}) {
       if (options.allocationError) throw new Error('FIFO unavailable')
       return { updatedSales: 1, updatedPurchases: 1 }
     },
+    createTrustedHeaderWriter: () => ({ trusted: true }),
     Date,
     URL,
     console: { error() {} },
@@ -121,18 +136,46 @@ async function loadPost(route, options = {}) {
 }
 
 for (const route of routes) {
+  test(`${route.name}: standalone POST requires ${route.permission}, independent of ${route.otherPermission}`, async () => {
+    const allowed = await loadPost(route, {
+      permissions: { [route.permission]: true, [route.otherPermission]: false },
+    })
+    assert.equal((await allowed.send({ permission: route.otherPermission })).status, 201)
+    assert.deepEqual(allowed.calls.permissions, [route.permission])
+    assert.equal(allowed.calls.inserts.length, 1)
+    assert.equal(allowed.calls.adminClients, 1)
+    assert.equal(allowed.calls.allocations.length, 1)
+
+    const denied = await loadPost(route, {
+      permissions: { [route.permission]: false, [route.otherPermission]: true },
+    })
+    assert.equal((await denied.send({ permission: route.permission })).status, 403)
+    assert.deepEqual(denied.calls.permissions, [route.permission])
+    assert.equal(denied.calls.inserts.length, 0)
+    assert.equal(denied.calls.adminClients, 0)
+    assert.equal(denied.calls.allocations.length, 0)
+  })
+
   test(`${route.name}: same-tenant related records insert once and allocate once`, async () => {
     const { calls, send } = await loadPost(route)
     const response = await send()
     assert.equal(response.status, 201, JSON.stringify({ body: response.body, calls }))
     assert.equal(calls.inserts.length, 1)
     assert.equal(calls.inserts[0].table, route.paymentTable)
+    assert.equal(calls.inserts[0].trusted, true)
+    assert.equal(calls.inserts[0].row.tenant_id, tenantId)
     assert.equal(calls.inserts[0].row.bank_account_id, accountId)
     assert.equal(calls.allocations.length, 1)
     assert.deepEqual(calls.lookups.find(call => call.table === 'bank_accounts')?.filters, {
       id: accountId,
       tenant_id: tenantId,
     })
+  })
+
+  test(`${route.name}: caller tenant_id is ignored by trusted payment insert`, async () => {
+    const { calls, send } = await loadPost(route)
+    assert.equal((await send({ tenant_id: otherTenantId })).status, 201)
+    assert.equal(calls.inserts[0].row.tenant_id, tenantId)
   })
 
   test(`${route.name}: omitted, null, or empty account remains valid for cash`, async () => {

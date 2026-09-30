@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOwnerOnly } from '@/lib/settings-auth'
 
@@ -30,16 +29,20 @@ export async function POST(request: Request) {
   const body = await request.json()
   const { email, role = 'staff' } = body
 
+  if (role !== 'staff') {
+    return NextResponse.json({ error: 'Only staff invitations are allowed' }, { status: 400 })
+  }
+
   if (!email?.trim()) {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
   }
 
   const normalizedEmail = email.trim().toLowerCase()
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
   const existingUserId = await findUserIdByEmail(normalizedEmail)
   if (existingUserId) {
-    const { data: existingMember } = await supabase
+    const { data: existingMember } = await admin
       .from('tenant_members')
       .select('id')
       .eq('tenant_id', tenantId)
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: pendingInvite } = await supabase
+  const { data: pendingInvite } = await admin
     .from('invitations')
     .select('id')
     .eq('tenant_id', tenantId)
@@ -74,7 +77,7 @@ export async function POST(request: Request) {
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + 7)
 
-  const { data: invitation, error } = await supabase
+  const { data: invitation, error } = await admin
     .from('invitations')
     .insert({
       tenant_id:  tenantId,

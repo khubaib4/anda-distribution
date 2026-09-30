@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
+import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { businessDateString } from '@/lib/business-date'
 
 export async function GET(request: Request) {
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'customers' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await createAdminClient()
     .from('customer_payments')
     .insert({
       tenant_id:      writeTenantId,
@@ -134,6 +136,7 @@ export async function POST(request: Request) {
   try {
     const allocation = await recalculateCustomerSaleAllocations({
       supabase,
+      trustedWriter: createTrustedHeaderWriter(),
       tenantId: writeTenantId,
       customerId: customer_id,
     })
