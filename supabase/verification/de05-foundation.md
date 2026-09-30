@@ -107,7 +107,7 @@ refreshed on 2026-10-01 after the rounding correction:
 - Default build could not load native SWC on this Mac. The supported fallback,
   `npm run build -- --webpack`, passed with network access for the existing fonts.
 
-## Later deployment and verification
+## Deployment and verification
 
 Deployment requires separate explicit approval. Take a recoverable snapshot and
 pause/drain stock and item/category writes for the short schema change. The
@@ -121,8 +121,55 @@ After an approved deployment, inspect the new catalog definitions/grants and
 confirm all three new tables remain empty, existing valuation/cost columns remain
 NULL, legacy records/counters/grants/triggers are unchanged, and old sale,
 purchase, and adjustment workflows still work. Controlled app smoke tests require
-separate write authorization. No deployment or production smoke test has been done
-for this foundation. Catalog verification must not call `nextval` or `setval`.
+separate write authorization. The approved production deployment and read-only
+database verification are recorded below; no production app write smoke test was
+run. Catalog verification must not call `nextval` or `setval`.
+
+## Production result — 2026-10-01
+
+Applied exactly migration version `20260930180615` using the Supabase CLI. Local
+and remote migration versions match; no migration repair, seed, role file, vault
+change, reset, or application deployment was included. The reviewed migration
+SHA-256 is `e3e6a295946bf30bfa28d840a6ac27416b6900cf32aa60fedeacd35b49d25f6c`.
+The user confirmed sales, purchases, stock adjustments, and category writes were
+paused before the data snapshot and migration.
+
+Supabase returned no available backup entry and PITR was disabled. The user
+explicitly authorized a private local public-schema/business-data/role-definition
+backup outside Git, under `~/.codex/backups/doctors-egg/`. Checksums were recorded.
+Public schema/data restored successfully to network-isolated PostgreSQL 17.6;
+the exact migration and guarded rollback also passed against that restored copy.
+Managed Auth objects were supplied as test prerequisites. This is a public
+business backup, not an Auth/Storage object backup or a complete platform clone.
+
+Read-only production verification completed at 00:47:38 PKT:
+
+- Three new tables empty, RLS enabled, zero policies and zero effective table
+  privileges for anon/authenticated/service_role.
+- Valuation sequence unused, BIGINT maximum `9223372036854775807`, no cycle;
+  all three app roles have zero sequence privileges.
+- Movement/sale-item valuation and exact cost fields remain NULL.
+- Stock tray column nullable; corrected one-way zero-eggs/zero-value checks
+  validated. Six tenant/history FKs validated, no unvalidated new constraints,
+  and no invalid relevant indexes.
+- Original-row fingerprints unchanged: 71 stock movements, 47 sale items,
+  20 purchase items, 47 sales, 18 purchases, 20 categories, and eight invoice
+  counter rows. Legacy table grants/RLS, policies, noninternal triggers, and
+  public functions also match the before-deployment fingerprints.
+- No production create/edit/delete smoke test, priced opening stock, counter
+  allocation, or valuation posting was performed. Normal writes may resume;
+  valuation remains inactive.
+
+The security advisor's [RLS-without-policy notices](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)
+for these new tables are intentional: no app role has access. Existing notices
+remain for six [security-definer views](https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view),
+the [mutable helper search path](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable),
+[anonymous](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
+and [authenticated](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)
+helper execution, and [disabled leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+These were not changed by this foundation; review them in the appropriate
+security work. Some trusted authenticated execution, such as invoice allocation,
+is intentional and must not be revoked indiscriminately.
 
 ## Recovery
 

@@ -1,6 +1,6 @@
 # Doctor's Egg - Project Context
 
-Last refreshed: 2026-09-30. Production deployment and smoke-test status below is confirmed by the project owner; this documentation refresh did not query production. Repository observations describe current implementation, while DE-05 describes approved future behavior.
+Last refreshed: 2026-10-01. The earlier security/invoice deployment and smoke-test status is confirmed by the project owner. DE-05 inactive-foundation deployment and read-only database verification were performed on 2026-10-01. The valuation engine remains approved future behavior.
 
 ## Current Project State
 
@@ -9,7 +9,7 @@ Last refreshed: 2026-09-30. Production deployment and smoke-test status below is
 - DE-18 atomic invoice counters are deployed and production-verified.
 - Production smoke test on tenant `Testing`: purchase `PUR-0004`, sale `SAL-0008`; `invoice_counters` advanced to purchase=4 and sale=8. These are recorded verification results, not a live counter reading.
 - DE-18 maintains independent sale and purchase counters per tenant. Invoice numbers are never reused; gaps are allowed.
-- DE-05 inventory costing architecture is fully approved. The inactive schema foundation is prepared locally in `20260930180615_de05_inactive_inventory_foundation.sql`, independently reviewed and tested on isolated PostgreSQL 17.6. It is not deployed or activated. See `supabase/verification/de05-foundation.md`; later work starts with the security/trusted-posting gate.
+- DE-05 inactive schema foundation `20260930180615_de05_inactive_inventory_foundation.sql` is deployed and database-verified in production on 2026-10-01 after explicit approval, a paused-write window, and a private public-schema/business-data backup with restore, migration, and rollback rehearsals. New inventory tables remain empty and closed to app roles; valuation fields are NULL and the sequence is unused. Existing checked business rows, invoice counters, table grants/RLS, policies, triggers, and functions are unchanged. No production app write smoke test was run. See `supabase/verification/de05-foundation.md`. Next implementation: security/trusted-posting gate; costing is not active.
 - Existing operational transaction data is test data. The approved DE-05 cutover requires a coordinated test-ledger reset after snapshot, followed by fresh priced opening stock. DE-18 counters must never be reset during cutover.
 
 ## 1. Project Overview
@@ -53,8 +53,8 @@ Confirmed app name: Doctor's Egg. Evidence: `package.json` has `"name": "doctors
 - `public/` - static icons and favicon assets.
 - `.env.example` - environment variable names with placeholder values.
 - `README.md` - default create-next-app README; not project-specific.
-- `supabase/migrations/` - versioned DE-SECURITY-01 and DE-18 SQL migrations.
-- `supabase/verification/` - security and invoice-counter verification procedures.
+- `supabase/migrations/` - versioned DE-SECURITY-01, DE-18, and DE-05 inactive-foundation SQL migrations.
+- `supabase/verification/` - security, invoice-counter, and inventory-foundation verification/recovery procedures.
 - Config files: `next.config.ts`, `tailwind.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `tsconfig.json`.
 
 ## 4. Routing Structure
@@ -147,7 +147,8 @@ Versioned migrations are present:
 
 - `supabase/migrations/20260930000000_de_security_01_write_hardening.sql` - protected writes, membership/invitation role constraints, and invoice identity immutability.
 - `supabase/migrations/20260930000001_de18_invoice_counters.sql` - atomic invoice allocation and per-tenant counters.
-- Both are deployed and production-verified. Verification procedures are in `supabase/verification/de-security-01.md` and `supabase/verification/de18.md`.
+- `supabase/migrations/20260930180615_de05_inactive_inventory_foundation.sql` - inactive exact inventory/costing state and journal storage; deployed 2026-10-01 without activating valuation.
+- All three are deployed and database-verified. Verification procedures are in `supabase/verification/de-security-01.md`, `supabase/verification/de18.md`, and `supabase/verification/de05-foundation.md`.
 
 A complete baseline schema and generated database types are not supplied by these migrations. The remaining table descriptions are inferred from source interfaces and queries; do not treat them as an exhaustive schema.
 
@@ -486,7 +487,7 @@ Costing method, invoice gap policy, and staff permission override behavior are s
 
 ## 18. DE-05 Approved Inventory Costing Architecture
 
-Status: fully approved. The inactive schema foundation is prepared and locally tested; the valuation engine and integrations remain unimplemented. Production still uses current stock behavior. The rules below describe the target.
+Status: fully approved. The inactive schema foundation is deployed and database-verified; the valuation engine and integrations remain unimplemented. Production still uses current stock behavior. The rules below describe the target.
 
 ### Authoritative inventory and costing
 
