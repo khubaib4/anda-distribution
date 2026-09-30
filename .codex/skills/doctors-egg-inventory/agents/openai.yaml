@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doctor’s Egg Inventory"
+  short_description: "Inventory, COGS, stock and valuation rules for Doctor’s Egg"
+  default_prompt: "Use $doctors-egg-inventory to apply Doctor’s Egg inventory rules and read PROJECT_CONTEXT.md before substantial inventory/accounting work."
