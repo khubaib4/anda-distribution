@@ -10,6 +10,7 @@ Last refreshed: 2026-10-01. The earlier security/invoice deployment and smoke-te
 - Production smoke test on tenant `Testing`: purchase `PUR-0004`, sale `SAL-0008`; `invoice_counters` advanced to purchase=4 and sale=8. These are recorded verification results, not a live counter reading.
 - DE-18 maintains independent sale and purchase counters per tenant. Invoice numbers are never reused; gaps are allowed.
 - DE-05 inactive schema foundation `20260930180615_de05_inactive_inventory_foundation.sql` is deployed and database-verified in production on 2026-10-01 after explicit approval, a paused-write window, and a private public-schema/business-data backup with restore, migration, and rollback rehearsals. New inventory tables remain empty and closed to app roles; valuation fields are NULL and the sequence is unused. Existing checked business rows, invoice counters, table grants/RLS, policies, triggers, and functions are unchanged. No production app write smoke test was run. See `supabase/verification/de05-foundation.md`. Next implementation: security/trusted-posting gate; costing is not active.
+- DE-05 Security Gate Foundation is implemented locally in `20260930202806_de05_security_gate_foundation.sql` and `src/lib/inventory-posting-auth.ts`, with isolated database tests and a rollback plan. It adds a trusted-server permission assertion and guards keeping new valuation fields inactive; existing routes do not use the new helper. Inventory tables/sequence remain closed, current posting workflows and DE-18 counters are preserved, and costing remains inactive. Independent review, read-only production preflight, and private-backup restore/migration/rollback rehearsals passed on 2026-10-01. This chunk is not deployed or production-verified. See `supabase/verification/de05-security-gate.md`. Next step: separately approved deployment after a confirmed write pause; production workflow checks remain pending.
 - Existing operational transaction data is test data. The approved DE-05 cutover requires a coordinated test-ledger reset after snapshot, followed by fresh priced opening stock. DE-18 counters must never be reset during cutover.
 
 ## 1. Project Overview
@@ -424,7 +425,7 @@ Likely but not fully confirmed:
 
 ## 14. Current Known Issues / Risks
 
-- DE-05 is approved but unimplemented; current simple-average COGS and rounded adjustment tray storage are legacy behavior, not the approved accounting model.
+- DE-05 valuation/posting is approved but unimplemented; the inactive schema is deployed, and the security-gate chunk is implemented only locally. Current simple-average COGS and rounded adjustment tray storage are legacy behavior, not the approved accounting model.
 - Invoice allocation is atomic, but multi-step financial and stock posting is not thereby made transactional.
 - Sale/purchase edit flows delete and recreate items/movements, creating partial-update risk.
 - Concurrent stock operations need atomic inventory state protection; availability prechecks alone do not ensure this.
@@ -435,7 +436,7 @@ Likely but not fully confirmed:
 ## 15. Development Workflow and Rules
 
 - Follow: audit -> small implementation -> independent review -> manual/database test -> commit -> next chunk.
-- Next chunk: DE-05 inventory costing schema foundation.
+- Current review chunk: DE-05 Security Gate Foundation (local implementation only). Future trusted transactional posting and costing activation require separate work and deployment approval.
 - Read relevant guides in `node_modules/next/dist/docs/` before writing Next.js code, as required by `AGENTS.md`.
 - Preserve DE-18 counters through any test-ledger reset; never reuse invoice numbers.
 - Inspect existing patterns first, especially `src/lib/tenant-api.ts`, `src/lib/utils.ts`, and nearby API handlers.
@@ -459,6 +460,7 @@ Existing setup:
 - TypeScript strict mode is enabled in `tsconfig.json`.
 - No `test`, `typecheck`, Jest, Vitest, Playwright, or Cypress scripts were found in `package.json`.
 - Automated Node regression tests are present in `tests/`; run `node --test tests/*.test.mjs`. DE-05 has a separate real PostgreSQL test runner: `node tests/de05-foundation-db.mjs`, using a disposable Docker container and synthetic data.
+- DE-05 security-gate database checks: `node tests/de05-security-gate-db.mjs`, also restricted to a new network-isolated disposable Docker container and synthetic data.
 
 Recommended manual checklist:
 
