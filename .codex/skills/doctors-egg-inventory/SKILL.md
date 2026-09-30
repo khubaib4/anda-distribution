@@ -28,7 +28,7 @@ DE-05 uses **moving weighted average**, maintaining conceptual state per **tenan
 | Operation | Quantity and value rule |
 | --- | --- |
 | Purchase | Add exact quantity and exact purchase value. |
-| New opening stock | Require explicit positive cost; add exact quantity and value. |
+| New opening stock | New opening stock is only valid as the first valued operation for an empty tenant/category balance and requires explicit positive cost; add exact quantity and value. |
 | Adjustment in | Accept explicit positive cost, or inherit the current known moving average. Reject inheritance if no positive known average exists. |
 | Adjustment out | Remove stock at the current moving-average value. |
 | Sale | Remove stock at the moving-average value immediately before the sale; permanently save exact sale COGS. Later purchases must never restate earlier sale COGS. |
