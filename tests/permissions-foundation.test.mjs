@@ -322,7 +322,9 @@ async function loadMemberPatch(options = {}) {
     requireOwnerOnly,
     createClient: async () => supabase,
     createAdminClient: () => ({
-      from() {
+      from(table) {
+        if (table === 'tenant_members') return supabase.from(table)
+        assert.equal(table, 'profiles')
         return {
           select() { return this },
           eq() { return this },

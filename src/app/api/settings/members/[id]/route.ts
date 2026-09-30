@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOwnerOnly } from '@/lib/settings-auth'
 import { storedModuleOverrides, validateModuleOverrides } from '@/lib/permissions'
@@ -13,9 +12,9 @@ export async function DELETE(
 
   const { ctx, tenantId } = auth
   const { id: memberId } = await params
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
-  const { data: member, error: fetchError } = await supabase
+  const { data: member, error: fetchError } = await admin
     .from('tenant_members')
     .select('id, user_id')
     .eq('id', memberId)
@@ -36,7 +35,7 @@ export async function DELETE(
     )
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('tenant_members')
     .delete()
     .eq('id', memberId)
@@ -83,8 +82,8 @@ export async function PATCH(
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
 
-  const supabase = await createClient()
-  const { data: existing, error: fetchError } = await supabase
+  const admin = createAdminClient()
+  const { data: existing, error: fetchError } = await admin
     .from('tenant_members')
     .select('id, user_id, role, permissions')
     .eq('id', memberId)
@@ -113,7 +112,7 @@ export async function PATCH(
     }
   }
 
-  let updateQuery = supabase
+  let updateQuery = admin
     .from('tenant_members')
     .update(updates)
     .eq('id', memberId)
@@ -133,7 +132,7 @@ export async function PATCH(
 
   let profile: { full_name: string | null } | null = null
   try {
-    const { data, error: profileError } = await createAdminClient()
+    const { data, error: profileError } = await admin
       .from('profiles')
       .select('full_name')
       .eq('id', member.user_id)

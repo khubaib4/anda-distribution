@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { recalculateCustomerSaleAllocations } from '@/lib/customer-payment-allocation'
@@ -78,7 +80,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'sales' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -236,21 +238,24 @@ export async function POST(request: Request) {
     }
   }
 
-  const { count, error: countError } = await supabase
-    .from('sales')
-    .select('*', { count: 'exact', head: true })
-    .eq('tenant_id', writeTenantId)
+  const invoiceClient = auth.ctx.isSuperAdmin ? createAdminClient() : supabase
+  const invoiceAllocator = auth.ctx.isSuperAdmin
+    ? 'allocate_invoice_number_trusted_v1'
+    : 'allocate_invoice_number_v1'
+  const { data: invoice_number, error: invoiceError } = await invoiceClient.rpc(
+    invoiceAllocator,
+    { p_tenant_id: writeTenantId, p_counter_type: 'sale' },
+  )
 
-  if (countError) {
+  if (invoiceError || !invoice_number) {
     return NextResponse.json(
-      { error: countError.message },
-      { status: 500 }
+      { error: invoiceError?.message ?? 'Invoice allocation failed' },
+      { status: invoiceError?.code === '42501' ? 403 : 500 },
     )
   }
 
-  const invoice_number = `SAL-${String((count ?? 0) + 1).padStart(4, '0')}`
-
-  const { data: sale, error: saleError } = await supabase
+  const admin = createAdminClient()
+  const { data: sale, error: saleError } = await admin
     .from('sales')
     .insert({
       tenant_id:             writeTenantId,
@@ -293,7 +298,7 @@ export async function POST(request: Request) {
     .insert(itemRows)
 
   if (itemsError) {
-    await supabase.from('sales').delete().eq('id', sale.id)
+    await admin.from('sales').delete().eq('id', sale.id).eq('tenant_id', writeTenantId)
     return NextResponse.json(
       { error: itemsError.message },
       { status: 500 }
@@ -316,7 +321,7 @@ export async function POST(request: Request) {
     .insert(movementRows)
 
   if (movementsError) {
-    await supabase.from('sales').delete().eq('id', sale.id)
+    await admin.from('sales').delete().eq('id', sale.id).eq('tenant_id', writeTenantId)
     return NextResponse.json(
       { error: movementsError.message },
       { status: 500 }
@@ -324,7 +329,7 @@ export async function POST(request: Request) {
   }
 
   if (payment_status === 'paid' && totalPaisa > 0) {
-    const { error: paymentError } = await supabase
+    const { error: paymentError } = await admin
       .from('customer_payments')
       .insert({
         tenant_id:       writeTenantId,
@@ -338,7 +343,7 @@ export async function POST(request: Request) {
       })
 
     if (paymentError) {
-      await supabase.from('sales').delete().eq('id', sale.id)
+      await admin.from('sales').delete().eq('id', sale.id).eq('tenant_id', writeTenantId)
       return NextResponse.json(
         { error: paymentError.message },
         { status: 500 }
@@ -352,7 +357,7 @@ export async function POST(request: Request) {
     amount_paid_paisa > 0 &&
     totalPaisa > 0
   ) {
-    const { error: paymentError } = await supabase
+    const { error: paymentError } = await admin
       .from('customer_payments')
       .insert({
         tenant_id:       writeTenantId,
@@ -366,7 +371,7 @@ export async function POST(request: Request) {
       })
 
     if (paymentError) {
-      await supabase.from('sales').delete().eq('id', sale.id)
+      await admin.from('sales').delete().eq('id', sale.id).eq('tenant_id', writeTenantId)
       return NextResponse.json(
         { error: paymentError.message },
         { status: 500 }
@@ -377,6 +382,7 @@ export async function POST(request: Request) {
   try {
     const allocation = await recalculateCustomerSaleAllocations({
       supabase,
+      trustedWriter: createTrustedHeaderWriter(),
       tenantId: writeTenantId,
       customerId: customer_id,
     })

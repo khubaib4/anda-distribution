@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { TrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 
 type AllocationStatus = 'paid' | 'partial' | 'unpaid'
 
@@ -53,10 +54,12 @@ function comparePurchasesFifo(a: PurchaseRow, b: PurchaseRow): number {
 
 export async function recalculateSupplierPurchaseAllocations({
   supabase,
+  trustedWriter,
   tenantId,
   supplierId,
 }: {
   supabase: SupabaseClient
+  trustedWriter: TrustedHeaderWriter
   tenantId: string
   supplierId: string
 }): Promise<SupplierPurchaseAllocationSummary> {
@@ -175,20 +178,13 @@ export async function recalculateSupplierPurchaseAllocations({
       continue
     }
 
-    const { error: updateError } = await supabase
-      .from('purchases')
-      .update({
-        payment_status,
-        amount_paid_paisa: allocatedPaisa,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', purchase.id)
-      .eq('tenant_id', tenantId)
-      .eq('supplier_id', supplierId)
-      .select('id')
-      .single()
-
-    if (updateError) throw updateError
+    await trustedWriter.updatePurchaseStatus({
+      tenantId,
+      id: purchase.id,
+      relatedId: supplierId,
+      paymentStatus: payment_status,
+      amountPaidPaisa: allocatedPaisa,
+    })
     updatedPurchases += 1
   }
 

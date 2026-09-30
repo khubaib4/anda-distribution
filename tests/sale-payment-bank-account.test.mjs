@@ -13,7 +13,7 @@ const customerId = '33333333-3333-4333-8333-333333333333'
 const accountId = '44444444-4444-4444-8444-444444444444'
 
 async function loadSale(options = {}) {
-  const calls = { lookups: [], writes: [], stockChecks: [], allocations: [] }
+  const calls = { lookups: [], writes: [], stockChecks: [], allocations: [], invoiceAllocations: [] }
   const records = {
     customers: options.customerMissing
       ? null
@@ -26,16 +26,15 @@ async function loadSale(options = {}) {
 
   const supabase = {
     auth: { getUser: async () => ({ data: { user: { id: 'user-1' } } }) },
+    async rpc(name, args) {
+      calls.invoiceAllocations.push({ name, args })
+      return { data: 'SAL-0001', error: null }
+    },
     from(table) {
       const filters = {}
       let insertedRow
-      let countRequested = false
-
       return {
-        select(_columns, settings) {
-          countRequested = settings?.count === 'exact'
-          return this
-        },
+        select() { return this },
         eq(column, value) { filters[column] = value; return this },
         in() { return this },
         async maybeSingle() {
@@ -61,9 +60,7 @@ async function loadSale(options = {}) {
           return { data: savedSale, error: null }
         },
         then(resolve) {
-          if (table === 'sales' && countRequested) {
-            resolve({ count: 0, error: null })
-          } else if (table === 'purchase_items') {
+          if (table === 'purchase_items') {
             resolve({ data: [], error: null })
           } else if (insertedRow) {
             resolve({ error: null })
@@ -83,8 +80,10 @@ async function loadSale(options = {}) {
 
   const context = {
     createClient: async () => supabase,
+    createAdminClient: () => supabase,
+    createTrustedHeaderWriter: () => ({ trusted: true }),
     NextResponse,
-    authorizeApi: async () => ({ tenantId }),
+    authorizeApi: async () => ({ tenantId, ctx: { isSuperAdmin: false } }),
     tenantEq: query => query,
     requireWriteTenantId: id => id,
     validateSaleItems: items => ({ ok: true, items }),
@@ -151,6 +150,10 @@ test('paid and partial sales validate the same-tenant account before writing and
     assert.deepEqual(calls.lookups[1].filters, { id: accountId, tenant_id: tenantId })
     assert.equal(calls.allocations.length, 1)
     assert.equal(calls.allocations[0].tenantId, tenantId)
+    assert.deepEqual(JSON.parse(JSON.stringify(calls.invoiceAllocations)), [{
+      name: 'allocate_invoice_number_v1',
+      args: { p_tenant_id: tenantId, p_counter_type: 'sale' },
+    }])
   }
 })
 
@@ -183,6 +186,7 @@ test('cross-tenant and nonexistent accounts fail alike before any write', async 
       assert.equal(calls.writes.length, 0)
       assert.equal(calls.stockChecks.length, 0)
       assert.equal(calls.allocations.length, 0)
+      assert.equal(calls.invoiceAllocations.length, 0)
     }
   }
 })

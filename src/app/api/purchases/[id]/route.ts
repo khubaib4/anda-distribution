@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 import { NextResponse } from 'next/server'
 import { authorizeApi, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
@@ -60,7 +62,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'purchases' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -240,7 +242,7 @@ export async function PATCH(
   if (purchase_date     !== undefined) updates.purchase_date          = purchase_date
   if (notes             !== undefined) updates.notes                  = notes || null
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await createAdminClient()
     .from('purchases')
     .update(updates)
     .eq('id', id)
@@ -332,6 +334,7 @@ export async function PATCH(
       try {
         await recalculateSupplierPurchaseAllocations({
           supabase,
+          trustedWriter: createTrustedHeaderWriter(),
           tenantId: writeTenantId,
           supplierId: allocationSupplierId,
         })

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'purchases' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -156,21 +158,24 @@ export async function POST(request: Request) {
     }
   }
 
-  const { count, error: countError } = await supabase
-    .from('purchases')
-    .select('*', { count: 'exact', head: true })
-    .eq('tenant_id', writeTenantId)
+  const invoiceClient = auth.ctx.isSuperAdmin ? createAdminClient() : supabase
+  const invoiceAllocator = auth.ctx.isSuperAdmin
+    ? 'allocate_invoice_number_trusted_v1'
+    : 'allocate_invoice_number_v1'
+  const { data: invoice_number, error: invoiceError } = await invoiceClient.rpc(
+    invoiceAllocator,
+    { p_tenant_id: writeTenantId, p_counter_type: 'purchase' },
+  )
 
-  if (countError) {
+  if (invoiceError || !invoice_number) {
     return NextResponse.json(
-      { error: countError.message },
-      { status: 500 }
+      { error: invoiceError?.message ?? 'Invoice allocation failed' },
+      { status: invoiceError?.code === '42501' ? 403 : 500 },
     )
   }
 
-  const invoice_number = `PUR-${String((count ?? 0) + 1).padStart(4, '0')}`
-
-  const { data: purchase, error: purchaseError } = await supabase
+  const admin = createAdminClient()
+  const { data: purchase, error: purchaseError } = await admin
     .from('purchases')
     .insert({
       tenant_id:              writeTenantId,
@@ -213,7 +218,7 @@ export async function POST(request: Request) {
     .insert(itemRows)
 
   if (itemsError) {
-    await supabase.from('purchases').delete().eq('id', purchase.id)
+    await admin.from('purchases').delete().eq('id', purchase.id).eq('tenant_id', writeTenantId)
     return NextResponse.json(
       { error: itemsError.message },
       { status: 500 }
@@ -239,7 +244,7 @@ export async function POST(request: Request) {
     .insert(movementRows)
 
   if (movementsError) {
-    await supabase.from('purchases').delete().eq('id', purchase.id)
+    await admin.from('purchases').delete().eq('id', purchase.id).eq('tenant_id', writeTenantId)
     return NextResponse.json(
       { error: movementsError.message },
       { status: 500 }
@@ -255,6 +260,7 @@ export async function POST(request: Request) {
   try {
     allocation = await recalculateSupplierPurchaseAllocations({
       supabase,
+      trustedWriter: createTrustedHeaderWriter(),
       tenantId: writeTenantId,
       supplierId: supplier_id,
     })
