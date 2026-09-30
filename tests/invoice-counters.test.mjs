@@ -337,6 +337,36 @@ test('migration seed contract accepts only approved existing tenants and uses hi
   assert.equal(seed(fourTenants, fourTenants[0], 'sale', 28), 30)
 })
 
+test('all prerequisite function gates require PostgreSQL\'s explicitly empty search_path entry', () => {
+  const migration = readFileSync(join(root, 'supabase/migrations/20260930000001_de18_invoice_counters.sql'), 'utf8')
+  const gate = migration.split('-- Hold concurrent tenant')[0]
+  const checks = [...gate.matchAll(
+    /ON p\.oid = to_regprocedure\(\s*'public\.([^']+)'\)[\s\S]*?AND p\.proconfig @> ARRAY\['([^']+)'\]::text\[\]/g,
+  )].map(([, signature, setting]) => [signature, setting])
+  assert.deepEqual(checks, [
+    ['prevent_invoice_identity_update_de_security_01()', 'search_path=""'],
+    ['consume_staff_invitation_de_security_01(text,text,uuid,uuid,text)', 'search_path=""'],
+    ['read_staff_invitation_acceptance_de_security_01(text,text,uuid,uuid)', 'search_path=""'],
+  ])
+  assert.equal((migration.match(/p\.proconfig/g) ?? []).length, checks.length)
+  assert.doesNotMatch(migration, /ARRAY\['search_path='\]/)
+
+  // Exercise exact text-array containment using the live PostgreSQL representation.
+  // NULL or a missing entry cannot satisfy the gate's positive WHERE condition.
+  for (const [, requiredSetting] of checks) {
+    for (const [proconfig, accepted] of [
+      [['search_path=""'], true],
+      [['work_mem=4MB', 'search_path=""'], true],
+      [null, false], [[], false], [['work_mem=4MB'], false],
+      [['search_path='], false], [['search_path=public'], false],
+      [['search_path="$user", public'], false], [['search_path="$user"'], false],
+    ]) {
+      assert.equal(proconfig?.includes(requiredSetting) ?? false, accepted,
+        `proconfig=${JSON.stringify(proconfig)}`)
+    }
+  }
+})
+
 test('migration and edit routes retain the database contract', () => {
   const migration = readFileSync(join(root, 'supabase/migrations/20260930000001_de18_invoice_counters.sql'), 'utf8')
   assert.match(migration, /PRIMARY KEY \(tenant_id, counter_type\)/)

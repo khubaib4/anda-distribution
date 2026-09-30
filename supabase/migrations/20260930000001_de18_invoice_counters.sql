@@ -161,7 +161,8 @@ BEGIN
       AND p.pronargs = 0
       AND NOT p.prosecdef
       AND p.provolatile = 'v'
-      AND p.proconfig @> ARRAY['search_path=']::text[]
+      -- PostgreSQL stores SET search_path = '' as search_path="" in proconfig.
+      AND p.proconfig @> ARRAY['search_path=""']::text[]
       AND p.prosrc = att.guard_function_source
       AND p.prosrc LIKE '%NEW.invoice_number IS DISTINCT FROM OLD.invoice_number%'
       AND p.prosrc LIKE '%NEW.tenant_id IS DISTINCT FROM OLD.tenant_id%'
@@ -180,7 +181,7 @@ BEGIN
       AND lang.lanname = 'plpgsql'
       AND p.prorettype = 'pg_catalog.bool'::regtype
       AND p.pronargs = 5 AND p.prosecdef
-      AND p.proconfig @> ARRAY['search_path=']::text[]
+      AND p.proconfig @> ARRAY['search_path=""']::text[]
       AND p.prosrc = att.invite_consume_source
       AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
       AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
@@ -199,7 +200,7 @@ BEGIN
       AND lang.lanname = 'plpgsql'
       AND p.prorettype = 'pg_catalog.jsonb'::regtype
       AND p.pronargs = 4 AND p.prosecdef AND p.provolatile = 'v'
-      AND p.proconfig @> ARRAY['search_path=']::text[]
+      AND p.proconfig @> ARRAY['search_path=""']::text[]
       AND p.prosrc = att.invite_read_source
       AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
       AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')

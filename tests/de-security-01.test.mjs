@@ -604,6 +604,7 @@ test('DE-18 gate checks exact role definitions and guard source plus trigger sha
     assert.match(gate, new RegExp(`t\\.tgrelid = 'public\\.${trigger}'::regclass[\\s\\S]*?t\\.tgname = '${trigger}_invoice_identity_immutable_de_security_01'[\\s\\S]*?t\\.tgtype = 19[\\s\\S]*?t\\.tgattr = ''::int2vector AND t\\.tgqual IS NULL[\\s\\S]*?t\\.tgfoid = to_regprocedure`))
   }
   assert.match(gate, /p\.prosrc = att\.guard_function_source/)
+  assert.match(gate, /p\.proconfig @> ARRAY\['search_path=""'\]::text\[\]\s+AND p\.prosrc = att\.guard_function_source/)
   assert.match(gate, /p\.prosrc LIKE '%NEW\.invoice_number IS DISTINCT FROM OLD\.invoice_number%'/)
   assert.match(gate, /p\.prosrc LIKE '%NEW\.tenant_id IS DISTINCT FROM OLD\.tenant_id%'/)
   assert.match(gate, /NOT p\.prosecdef/)
@@ -668,6 +669,9 @@ test('invite RPC uses database clock, consumes once, and rolls back membership f
   assert.match(rpc, /INSERT INTO public\.profiles[\s\S]*INSERT INTO public\.tenant_members/)
   assert.match(security, /REVOKE ALL ON FUNCTION public\.consume_staff_invitation_de_security_01[\s\S]*FROM PUBLIC, anon, authenticated/)
   assert.match(security, /GRANT EXECUTE ON FUNCTION public\.consume_staff_invitation_de_security_01[\s\S]*TO service_role/)
+  const gate = source('supabase/migrations/20260930000001_de18_invoice_counters.sql')
+    .split('-- Hold concurrent tenant')[0]
+  assert.match(gate, /p\.proconfig @> ARRAY\['search_path=""'\]::text\[\]\s+AND p\.prosrc = att\.invite_consume_source/)
 })
 
 test('trusted invitation reconciliation serializes with a held invitation lock and reads immutable identities', () => {
@@ -686,6 +690,7 @@ test('trusted invitation reconciliation serializes with a held invitation lock a
   const gate = source('supabase/migrations/20260930000001_de18_invoice_counters.sql')
     .split('-- Hold concurrent tenant')[0]
   assert.match(gate, /p\.prosrc = att\.invite_read_source/)
+  assert.match(gate, /p\.proconfig @> ARRAY\['search_path=""'\]::text\[\]\s+AND p\.prosrc = att\.invite_read_source/)
   assert.match(gate, /trusted invitation reconciliation RPC/)
 })
 
