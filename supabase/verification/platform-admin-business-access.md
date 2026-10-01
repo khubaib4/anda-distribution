@@ -145,12 +145,14 @@ Vercel rebuilt reviewed source commit `274fc6b51cbf2bf1afc247b49fa343931e3dff70`
 using the Production environment, then aliased the Ready deployment
 `GDMj8TQwkr9vm3XT9Sm5zk2JYaCX` to `anda-distribution.vercel.app` at about
 05:05 PKT. This was a direct promotion from the reviewed branch. The release
-would fast-forward main from `4724d32` to the same reviewed code plus these
-deployment notes, using a normal non-force push. Automatic approval review
-rejected the main update because deployment approval did not clearly authorize
-changing the default branch; separate owner approval was requested. Main remains
-unchanged. The application and migration files remain identical to reviewed
-`274fc6b`.
+includes an owner-approved fast-forward of main from `4724d32` to the same
+reviewed code plus deployment notes, using a normal non-force push. Automatic
+approval review initially rejected the main update because deployment approval
+did not clearly authorize changing the default branch. The owner subsequently
+gave explicit approval on 2026-10-01. The application and migration files remain
+identical to reviewed `274fc6b`; only the handoff/deployment documentation changed.
+No production SQL is run as part of Git integration. The final human API check
+remains pending; approval is not treated as a test result.
 
 After the deployed Testing owner stock page loaded, the CLI applied only
 `20260930230547_deny_platform_admin_business_access.sql`, with no seed, roles or
