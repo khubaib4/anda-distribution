@@ -1,6 +1,6 @@
 # Shared stock write protection
 
-Implemented and tested locally on 2026-10-02 PKT. Not committed, pushed or deployed. Production still has the previously reported race until this app/database release is installed.
+Implemented and tested locally on 2026-10-02 PKT. After the owner's explicit commit/push request, source commit `c7c30f5fd3365da361dd56b690a4d5e3ad6a8508` was published on `codex/shared-stock-write-protection` in `khubaib4/anda-distribution`. Fresh remote refs confirm the feature branch and main unchanged at `41d2cd741df00fb2a5c3784df9097d35322d57b1`. Main integration and the coordinated app/database release remain pending; production still has the previously reported race until this release is installed. The Git-only publication retains the previous test results and passed staged whitespace checks; no production SQL or deployment command was run.
 
 With 10 trays available, an 8-tray sale and an 8-tray stock-out adjustment now take turns when saving. The first entry saves. The second sees the remaining 2 trays and is refused with an insufficient-stock message. It saves no invoice, payment or stock change. Purchase corrections that would remove stock already used by a sale are also refused without damaging the purchase.
 
