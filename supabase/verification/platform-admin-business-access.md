@@ -2,8 +2,9 @@
 
 Status (2026-10-01): implemented and tested locally on
 `codex/de05-security-gate-foundation`. Independent review reported no actionable
-findings; the owner approved commit/push and production deployment. Production
-still has the old access rules while backup/rehearsal and deployment are prepared.
+findings; the owner approved commit/push and production deployment. Commit `274fc6b51cbf2bf1afc247b49fa343931e3dff70` is pushed; the working tree
+was clean after the commit. The reviewed app and database migration are now deployed;
+owner/staff live saves passed. Super-admin page checks passed; the final human API check remains pending.
 
 Platform administrators may manage business setup, plans, status and the existing
 account/membership contact metadata used by platform management. They must not
@@ -41,8 +42,9 @@ Private server infrastructure credentials remain separate from this human role.
 ## Evidence
 
 Production inspection used read-only catalog SELECT queries for tables, views,
-policies, functions, columns/constraints and function ownership. No business
-records were exported or production writes made. The committed test fixture contains schema/security metadata only. All test
+policies, functions, columns/constraints and function ownership. During implementation, no business
+records were exported or production writes made. The later approved deployment
+backup and live Testing writes are recorded below. The committed test fixture contains schema/security metadata only. All test
 records and Auth identities are synthetic, inside disposable network-isolated
 PostgreSQL 17.6 containers.
 
@@ -72,7 +74,8 @@ findings. It reported the same 121 app/162 corrective/89 foundation/249 historic
 gate checks, plus 30 additional checks for invoice allocation, function permissions,
 staff views and inactive costing. Account-switching simulation, stale responses,
 cache clearing and navigation/fetch checks passed. No files were changed by review.
-Real browser switching/workflows and a fresh production-copy rehearsal remain.
+The fresh production-copy rehearsal and owner/staff browser saves are now complete;
+platform-account switching/page-denial checks passed; the final human API check remains pending below.
 
 ## Review and deployment
 
@@ -102,3 +105,92 @@ the prior access policies/view behavior and therefore reopens the privacy defect
 Prefer a reviewed forward fix. Do not run that rollback without explicit approval;
 do not roll the app back alone. The local suite proves prior metadata/rows restore
 exactly and reapplying the correction closes access again.
+
+## Approved deployment preparation — 2026-10-01
+
+The owner approved commit/push and production deployment and confirmed sales,
+purchases, payments, stock/category changes and permission changes paused.
+Source commit `274fc6b` is pushed on the existing feature branch; local/remote SHA
+matched and main was unchanged. GitHub reports its Vercel build succeeded.
+
+A fresh public schema/business-data/roles backup was saved in a mode 0700
+subfolder of the previously approved private backup destination:
+`~/.codex/backups/doctors-egg/de05-security-gate-predeployment-20261001-u91uz13h/privacy-predeployment-20261001-kbc7n8xo/`.
+Files are mode 0600, outside Git; checksums and diagnostics are retained privately.
+It excludes managed Auth/Storage and is not a full platform clone.
+
+The restored backup matched all 25 paused production table fingerprints.
+An isolated PostgreSQL 17.6 rehearsal passed 88 checks for the exact migration,
+platform denial, owner/staff reads, legacy trusted writes, inactive-cost rejection,
+rollback and reapplication. Original rows/counters stayed unchanged and the
+valuation sequence remained unused. Managed Auth/extension prerequisites were
+supplied only to the local copy; no production Auth change occurred. The disposable
+container was removed.
+
+The initial rollback comparison detected pg_dump omitting redundant owner-only
+ACL entries on the three closed inventory tables. The subsequent comparison
+normalized default ACL representation and verified identical effective privileges,
+policy definitions, views and function definitions after rollback. No migration
+or application fix was required by this finding.
+
+Migration SHA-256:
+`5f89350dee6d834666a1709833bed9a5f7d9efb2fea60b00adaab21d952862c6`.
+The remote dry run lists only this migration, with no seeds/roles/vault update.
+At this preparation checkpoint no production migration or application deployment
+had occurred. The subsequent approved deployment is recorded below.
+
+## Approved production deployment — 2026-10-01
+
+Vercel rebuilt reviewed source commit `274fc6b51cbf2bf1afc247b49fa343931e3dff70`
+using the Production environment, then aliased the Ready deployment
+`GDMj8TQwkr9vm3XT9Sm5zk2JYaCX` to `anda-distribution.vercel.app` at about
+05:05 PKT. This was a direct promotion from the reviewed branch. The release
+also fast-forwards main from `4724d32` to the same reviewed code plus these
+deployment notes, using a normal non-force push. No unrelated commits, rebase
+or source changes are included. Vercel may rebuild that documentation commit;
+the application and migration files remain identical to reviewed `274fc6b`.
+
+After the deployed Testing owner stock page loaded, the CLI applied only
+`20260930230547_deny_platform_admin_business_access.sql`, with no seed, roles or
+vault update. Remote migration history confirms the version. Immediately after
+application, all 25 public table counts/fingerprints matched the paused backup,
+including invoice counters. No business records changed during migration.
+
+Production metadata matches the rehearsal for policies, functions, triggers and
+all six invoker views. The sole serialized relation difference is the existing
+sequence's redundant explicit postgres-only ACL versus pg_dump's implicit default;
+effective access is identical, and anon/authenticated/service_role still cannot
+use or advance the sequence. All 46 checked browser-table grants deny TRUNCATE;
+public tenant writes are denied. The 22 restrictive policies are present.
+The three inventory tables remain empty, costing fields NULL, and sequence
+last_value=1/is_called=false. The six definer-view errors and mutable search-path
+warning no longer appear in security advisors. Existing narrowly scoped role-helper/
+invoice allocator executable-function warnings and leaked-password-protection
+warning remain; no new advisor finding appeared.
+
+Testing owner and existing Testing staff each successfully saved note-only edits
+to existing synthetic `SAL-0009` and `PUR-0005` through the deployed app. Both
+invoices remain two trays/Rs 20, fully paid, with exactly one matching movement
+and two payments each. No new invoices, payments or counter allocations were made.
+Staff settings still display Access Restricted. User-controlled owner-to-staff
+account switching worked. Only the expected synthetic invoice notes/timestamps
+and replacement child/movement IDs changed. A separate network-isolated backup
+restore compared all 25 fingerprints after excluding just these two test headers
+and their children/movements; all original records and counters match.
+
+Super-admin platform dashboard, Testing tenant metadata and plan/status editor
+loaded successfully. Business dashboard/settings/stock/sale/purchase URLs
+redirected to `/admin`, including stock and sale URLs with explicit Testing
+selection. No business form or record was shown. Staff-to-platform account
+switching showed only platform metadata; no stale business view remained. No
+super-admin business save was attempted. The existing admin layout is hidden
+below its desktop breakpoint; a temporary desktop viewport allowed the check.
+
+The browser tool refused direct navigation to the business API URL with a client
+block, so that attempt is not counted as an API denial. The owner was asked to
+open the selected-tenant stock API manually while signed in as super-admin and
+report its response. That live API check remains pending; the synthetic route
+handler tests cover write denial, but no live HTTP write-denial probe was made.
+Normal business writes remain paused until the final check completes.
+The existing nontransactional edit risk remains; this correction does not activate
+DE-05 valuation or implement future posting functions.
