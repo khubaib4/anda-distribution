@@ -72,10 +72,6 @@ export async function PATCH(
   const { id } = await params
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
   const body = await request.json()
 
   const paymentFields = [
@@ -114,7 +110,8 @@ export async function PATCH(
       amount_paid_paisa,
       paid_by,
       paid_by_partner_id,
-      paid_by_partner_source
+      paid_by_partner_source,
+      updated_at
     `)
     .eq('id', id)
     .eq('tenant_id', writeTenantId)
@@ -233,92 +230,43 @@ export async function PATCH(
     }
   }
 
-  const updates: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
+  // Send only editable values. Actor, business and edit version come from the
+  // signed-in session/read above, never from request JSON. The database saves
+  // the header, items and stock together, or rolls the entire edit back.
+  const payload: Record<string, unknown> = {}
+  if (supplier_id !== undefined) payload.supplier_id = supplier_id || null
+  if (supplier_name !== undefined) payload.supplier_name = supplier_name || null
+  if (purchase_date !== undefined) payload.purchase_date = purchase_date
+  if (notes !== undefined) payload.notes = notes || null
+  if (items !== undefined) payload.items = items
+
+  let editError
+  try {
+    const result = await createAdminClient().rpc('edit_purchase_stock_v1', {
+      p_actor: auth.ctx.userId,
+      p_tenant: writeTenantId,
+      p_purchase: id,
+      p_expected_updated_at: existing.updated_at,
+      p_payload: payload,
+    })
+    editError = result.error
+  } catch {
+    return NextResponse.json({ error: 'Unable to confirm this purchase edit. Reload the purchase before trying again.' }, { status: 503 })
+  }
+  if (editError) {
+    const code = editError.code ?? ''
+    if (['40P01', '40001', '55P03'].includes(code)) {
+      return NextResponse.json({ error: 'Stock changed while saving. Reload the purchase and try again.' }, { status: 409 })
+    }
+    const status = code === '42501' ? 403 : code === 'P0002' ? 404
+      : ['23514', 'P0001'].includes(code) ? 409
+      : ['22023', '22P02', '22003', '22007', '22008', '23502', '23503'].includes(code) ? 400 : 503
+    return NextResponse.json({ error: status === 503
+      ? 'Unable to confirm this purchase edit. Reload the purchase before trying again.'
+      : editError.message }, { status })
   }
 
-  if (supplier_id       !== undefined) updates.supplier_id            = supplier_id || null
-  if (supplier_name     !== undefined) updates.supplier_name_snapshot = supplier_name || null
-  if (purchase_date     !== undefined) updates.purchase_date          = purchase_date
-  if (notes             !== undefined) updates.notes                  = notes || null
-
-  const { error: updateError } = await createAdminClient()
-    .from('purchases')
-    .update(updates)
-    .eq('id', id)
-    .eq('tenant_id', writeTenantId)
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
-  }
-
-  const movementDate = purchase_date ?? existing.purchase_date
   const invoiceNumber = existing.invoice_number
-
-  if (items !== undefined) {
-    const { error: delItemsError } = await supabase
-      .from('purchase_items')
-      .delete()
-      .eq('purchase_id', id)
-      .eq('tenant_id', writeTenantId)
-
-    if (delItemsError) {
-      return NextResponse.json({ error: delItemsError.message }, { status: 500 })
-    }
-
-    const { error: delMovError } = await supabase
-      .from('stock_movements')
-      .delete()
-      .eq('reference_id', id)
-      .eq('movement_type', 'purchase_in')
-      .eq('tenant_id', writeTenantId)
-
-    if (delMovError) {
-      return NextResponse.json({ error: delMovError.message }, { status: 500 })
-    }
-
-    const itemRows = items.map((item: {
-      egg_category_id:      string
-      quantity_trays:       number
-      price_per_tray_paisa: number
-    }) => ({
-      tenant_id:            writeTenantId,
-      purchase_id:          id,
-      egg_category_id:      item.egg_category_id,
-      quantity_trays:       item.quantity_trays,
-      price_per_tray_paisa: item.price_per_tray_paisa,
-    }))
-
-    const { error: itemsError } = await supabase
-      .from('purchase_items')
-      .insert(itemRows)
-
-    if (itemsError) {
-      return NextResponse.json({ error: itemsError.message }, { status: 500 })
-    }
-
-    const movementRows = items.map((item: {
-      egg_category_id: string
-      quantity_trays:  number
-    }) => ({
-      tenant_id:       writeTenantId,
-      egg_category_id: item.egg_category_id,
-      movement_type:   'purchase_in',
-      quantity_trays:  item.quantity_trays,
-      reference_id:    id,
-      notes:           `Purchase ${invoiceNumber}`,
-      movement_date:   movementDate,
-      created_by:      user?.id || null,
-    }))
-
-    const { error: movementsError } = await supabase
-      .from('stock_movements')
-      .insert(movementRows)
-
-    if (movementsError) {
-      return NextResponse.json({ error: movementsError.message }, { status: 500 })
-    }
-  }
 
   let allocationWarning: string | undefined
   if (shouldRecalculateAllocation) {

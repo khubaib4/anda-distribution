@@ -722,8 +722,13 @@ test('protected header writes use trusted clients with tenant-scoped mutation pr
     assert.match(headerInsert, new RegExp(`admin\\.from\\('${kind}'\\)\\.delete\\(\\)\\.eq\\('id', (?:sale|purchase)\\.id\\)\\.eq\\('tenant_id', writeTenantId\\)`))
     assert.doesNotMatch(create, new RegExp(`await supabase\\.from\\('${kind}'\\)\\.delete`))
 
-    const update = edit.slice(edit.indexOf('const { error: updateError } = await createAdminClient()'))
-    assert.match(update, new RegExp(`\\.from\\('${kind}'\\)[\\s\\S]*?\\.update\\(updates\\)[\\s\\S]*?\\.eq\\('id', id\\)[\\s\\S]*?\\.eq\\('tenant_id', writeTenantId\\)`))
+    if (kind === 'purchases') {
+      assert.match(edit, /createAdminClient\(\)\.rpc\('edit_purchase_stock_v1', \{\s+p_actor: auth\.ctx\.userId,\s+p_tenant: writeTenantId,\s+p_purchase: id,\s+p_expected_updated_at: existing\.updated_at,/)
+      assert.doesNotMatch(edit, /\.update\(updates\)|\.delete\(\)|\.insert\(movementRows\)/)
+    } else {
+      const update = edit.slice(edit.indexOf('const { error: updateError } = await createAdminClient()'))
+      assert.match(update, new RegExp(`\\.from\\('${kind}'\\)[\\s\\S]*?\\.update\\(updates\\)[\\s\\S]*?\\.eq\\('id', id\\)[\\s\\S]*?\\.eq\\('tenant_id', writeTenantId\\)`))
+    }
   }
 
   const writer = source('src/lib/supabase/trusted-header-writer.ts')

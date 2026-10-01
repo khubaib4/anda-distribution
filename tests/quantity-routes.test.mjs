@@ -55,7 +55,7 @@ function routeImports(supabase) {
     '@/lib/supabase/server': { createClient: async () => supabase },
     'next/server': { NextResponse },
     '@/lib/tenant-api': {
-      authorizeApi: async () => ({ tenantId }),
+      authorizeApi: async () => ({ tenantId, ctx: { userId: 'user-1' } }),
       requireWriteTenantId: id => id,
       tenantEq: query => query,
     },
@@ -104,7 +104,13 @@ test('manual stock route rejects fractional eggs and nonphysical trays before in
     const response = await POST(request({ ...base, quantity_unit: 'trays', quantity_trays: trays }))
     assert.equal(response.status, 201)
     assert.equal(inserts.at(-1).row.quantity_eggs, eggs)
+    assert.equal(inserts.at(-1).row.quantity_trays, null)
     assert.equal(inserts.at(-1).row.movement_date, '2026-09-29')
+  }
+  for (const eggs of [15,30,60]) {
+    assert.equal((await POST(request({ ...base, quantity_unit: 'eggs', quantity_eggs: eggs }))).status,201)
+    assert.equal(inserts.at(-1).row.quantity_eggs,eggs)
+    assert.equal(inserts.at(-1).row.quantity_trays,eggs%30===0?eggs/30:null)
   }
 })
 
@@ -156,4 +162,93 @@ test('purchase edit rejects malformed and fractional items before update', async
     assert.equal(response.status, 400)
     assert.equal(writes, 0)
   }
+})
+
+test('manual stock returns a useful conflict when its successful preview loses the save race', async () => {
+  for (const code of ['23514','40P01','40001','55P03','42501']) {
+    const inserts=[], permissions=[]
+    const supabase={
+      auth:{getUser:async()=>({data:{user:{id:'user-1'}}})},
+      from(table){assert.equal(table,'stock_movements');return {
+        insert(row){inserts.push(row);return this},select(){return this},
+        async single(){return {data:null,error:{code,message:'Database refused this write'}}},
+      }},
+    }
+    const imports=routeImports(supabase)
+    imports['@/lib/tenant-api'].authorizeApi=async(_request,opts)=>{permissions.push(opts.permission);return {tenantId}}
+    imports['@/lib/stock-availability']={validateOutboundStockAvailability:async()=>({})}
+    const {POST}=loadModule('src/app/api/stock/movements/route.ts',imports)
+    const response=await POST(request({egg_category_id:'cat-1',movement_type:'adjustment_out',quantity_unit:'trays',quantity_trays:8,tenant_id:'spoofed'}))
+    assert.equal(response.status,code==='42501'?403:409)
+    if(code!=='42501')assert.match(response.body.error,/stock/i)
+    assert.equal(inserts.length,1)
+    assert.equal(inserts[0].tenant_id,tenantId)
+    assert.deepEqual(permissions,['stock'])
+  }
+})
+
+function purchaseEditHarness({error=null,throws=false,allocationFailure=false}={}) {
+  const calls=[],reads=[],allocations=[]
+  const existing={id:'purchase-1',invoice_number:'PUR-TEST',purchase_date:'2026-09-29',
+    supplier_id:'supplier-1',supplier_name_snapshot:null,payment_status:'unpaid',
+    amount_paid_paisa:0,paid_by:null,paid_by_partner_id:null,paid_by_partner_source:null,
+    updated_at:'2026-09-29T10:00:00+00:00'}
+  const supabase={from(table){assert.equal(table,'purchases');const filters=[];return {
+    select(){return this},eq(k,v){filters.push([k,v]);return this},
+    async single(){reads.push(filters);return {data:{...existing,items:[{quantity_trays:8,price_per_tray_paisa:10000}]},error:null}},
+    update(){throw Error('Header must save inside the database transaction')},
+    insert(){throw Error('Items must save inside the database transaction')},
+    delete(){throw Error('Stock must save inside the database transaction')},
+  }}}
+  const imports=routeImports(supabase)
+  imports['@/lib/supabase/admin']={createAdminClient:()=>({rpc:async(name,payload)=>{
+    calls.push({name,payload});if(throws)throw Error('Lost response');return {data:{id:'purchase-1'},error}
+  }})}
+  imports['@/lib/supabase/trusted-header-writer']={createTrustedHeaderWriter:()=>({})}
+  imports['@/lib/supplier-payment-allocation']={recalculateSupplierPurchaseAllocations:async opts=>{
+    allocations.push(opts.supplierId);if(allocationFailure)throw Error('Allocation refresh failed')
+  }}
+  imports['@/lib/expense-partners']={enrichWithPartnerNames:async(_client,rows)=>rows}
+  imports['@/lib/stock-availability']={validatePurchaseEditStockAvailability:async()=>({ok:true,invalidItems:[]})}
+  const route=loadModule('src/app/api/purchases/[id]/route.ts',imports)
+  return {...route,calls,reads,allocations,existing}
+}
+
+test('purchase edit uses one trusted transaction and reloads only after it succeeds', async () => {
+  const h=purchaseEditHarness()
+  const items=[{egg_category_id:'cat-1',quantity_trays:8,price_per_tray_paisa:10000}]
+  const response=await h.PATCH(request({items,notes:'Corrected',p_actor:'spoofed',tenant_id:'spoofed',updated_at:'spoofed'}),{params:Promise.resolve({id:'purchase-1'})})
+  assert.equal(response.status,200)
+  assert.equal(response.body.total_paisa,80000)
+  assert.equal(h.calls.length,1)
+  assert.equal(h.calls[0].name,'edit_purchase_stock_v1')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0].payload)),{
+    p_actor:'user-1',p_tenant:tenantId,p_purchase:'purchase-1',
+    p_expected_updated_at:h.existing.updated_at,p_payload:{notes:'Corrected',items},
+  })
+  assert.deepEqual(h.allocations,['supplier-1'])
+  assert.equal(h.reads.length,2)
+  for(const filters of h.reads)assert.deepEqual(filters,[['id','purchase-1'],['tenant_id',tenantId]])
+})
+
+test('a blocked or uncertain purchase edit does not run partial writes or payment allocation', async () => {
+  for(const [code,status] of [['23514',409],['P0001',409],['40P01',409],['55P03',409],['42501',403],['P0002',404],['22023',400],['XX000',503],[null,503]]) {
+    const h=purchaseEditHarness({error:code?{code,message:'Stock or version changed'}:null,throws:code===null})
+    const response=await h.PATCH(request({items:[{egg_category_id:'cat-1',quantity_trays:8,price_per_tray_paisa:10000}]}),{params:Promise.resolve({id:'purchase-1'})})
+    assert.equal(response.status,status)
+    assert.equal(h.calls.length,1)
+    assert.equal(h.reads.length,1)
+    assert.equal(h.allocations.length,0)
+    if(status===503)assert.match(response.body.error,/Reload the purchase/)
+  }
+})
+
+test('a saved purchase with a payment-refresh failure reports success and warns against repeating the edit', async () => {
+  const h=purchaseEditHarness({allocationFailure:true})
+  const response=await h.PATCH(request({items:[{egg_category_id:'cat-1',quantity_trays:8,price_per_tray_paisa:10000}]}),{params:Promise.resolve({id:'purchase-1'})})
+  assert.equal(response.status,200)
+  assert.match(response.body.allocation_warning,/Purchase was saved.*Do not repeat this edit/)
+  assert.equal(h.calls.length,1)
+  assert.equal(h.allocations.length,1)
+  assert.equal(h.reads.length,2)
 })

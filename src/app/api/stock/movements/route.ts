@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeApi(request)
+  const auth = await authorizeApi(request, { permission: 'stock' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
@@ -94,7 +94,6 @@ export async function POST(request: Request) {
   }
 
   let quantity_eggs: number
-  let quantity_trays: number
 
   if (quantity_unit === 'eggs') {
     if (!isPositiveWholeEggCount(inputEggs)) {
@@ -104,7 +103,6 @@ export async function POST(request: Request) {
       )
     }
     quantity_eggs = inputEggs
-    quantity_trays = Math.ceil(quantity_eggs / 30)
   } else {
     const wholeEggs = wholeEggsFromTrays(inputTrays)
     if (wholeEggs === null) {
@@ -113,9 +111,10 @@ export async function POST(request: Request) {
         { status: 400 },
       )
     }
-    quantity_trays = inputTrays
     quantity_eggs = wholeEggs
   }
+  // Eggs are exact; the legacy tray field only describes complete trays.
+  const quantity_trays = quantity_eggs % 30 === 0 ? quantity_eggs / 30 : null
 
   if (movement_type === 'adjustment_out') {
     const availability = await validateOutboundStockAvailability({
@@ -179,7 +178,17 @@ export async function POST(request: Request) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // The database rechecks after other stock writers finish. A preview can
+    // pass and still lose this race, without saving any part of the movement.
+    if (error.code === '23514') {
+      return NextResponse.json({ error: 'Insufficient stock. Review the available quantity and try again.' }, { status: 409 })
+    }
+    if (['40P01', '40001', '55P03'].includes(error.code ?? '')) {
+      return NextResponse.json({ error: 'Stock changed while saving. Review stock and try again.' }, { status: 409 })
+    }
+    const status = error.code === '42501' ? 403
+      : ['22023', '22P02', '22003', '23503'].includes(error.code ?? '') ? 400 : 500
+    return NextResponse.json({ error: error.message }, { status })
   }
 
   return NextResponse.json(data, { status: 201 })
