@@ -1,11 +1,13 @@
 # DE-05 customer payment/FIFO — local review packet
 
-Status: locally implemented on `codex/de05-customer-payment-fifo`, based on clean
-main `4e0cb531ac292c8dd4819618867ca06c33921123`. Independent review passed with
-no actionable findings; the owner approved commit/push. Production rehearsal
-and deployment are pending. No production database or
-private backup was used. This packet describes an inactive private building
-block, not a change to the live payment API.
+Status: reviewed source `d8c6a0f5ea5981dda66256b857a14bd0f3a8fbd8` is committed
+and pushed on `codex/de05-customer-payment-fifo`, based on main `4e0cb53`.
+After explicit production approval, a fresh private backup and successful
+restore rehearsal, migration `20261001112505` was deployed and read-only verified
+on 2026-10-01. This remains an inactive private building block: the live payment
+API and inventory costing have not been switched to it. Implementation and
+independent review used synthetic databases only; the approved deployment
+rehearsal used a private production copy as recorded below.
 
 ## Problem and scope
 
@@ -143,7 +145,54 @@ checks. Another 260 synthetic probes covered exact money, retry waits, permissio
 removal, platform-admin denial, tenant reassignment, refreshed FIFO ordering and
 combined sale/costing/payment transactions. The reviewer did not rerun the build
 and accessed neither production nor private backups. This confirms local readiness
-as a closed inactive building block; production readiness remains unverified.
+as a closed inactive building block; production readiness was still unverified
+at that review checkpoint. The later deployment result is recorded below.
+
+## Production deployment checkpoint — 2026-10-01
+
+The owner explicitly approved production deployment, confirmed sales/purchases/
+payments/stock/category/permission writes paused, and approved a fresh private
+backup of public/de05_costing schemas, business records and role definitions.
+Backup is outside Git with folder access 0700 and files 0600:
+`/Users/khubaib/.codex/backups/doctors-egg/de05-customer-fifo-predeployment-20261001/backup-fzthpv0l/`.
+Managed Auth/Storage are excluded; this is not a full managed-project disaster
+recovery backup. Restore used FK identity stand-ins and managed-role stand-ins
+in a disconnected PostgreSQL 17.6 container, removed afterward. Diagnostics and
+verification metadata remain private in that backup folder.
+
+The fresh restore matched all 25 existing public table fingerprints and the
+deployed costing core. Exact migration/guarded rollback/reapplication, opened
+access refusal, receipt retries, injected allocation failure, unsupported
+isolation refusal and counter/sequence preservation passed **95 checks**.
+Normalized effective public security matched production exactly. Local restore
+bootstrap/search-path differences were corrected only in the private harness;
+no reviewed SQL, production role or existing permission was changed.
+
+The final predeployment read confirmed the paused production state still matched
+the backup. CLI dry run listed only this migration. The deployment applied only
+`20261001112505_de05_customer_payment_fifo.sql`, without seeds, custom-role or
+vault updates. Exact applied source SHA-256:
+`95bd657109b77f4125822ee5e45e5e4e43c649cd2427de0082d9ebeb78c5c97c`.
+Remote history now includes version `20261001112505` / `de05_customer_payment_fifo`.
+
+Postdeployment read-only verification at 17:50 PKT confirmed all 25 public table
+fingerprints, invoice counters, existing functions/policies/triggers/grants and
+the costing core unchanged. The private schema owner, four invoker function
+bodies/configuration/ACLs, table columns/constraints/indexes/RLS and effective
+schema/table/column/routine access match the rehearsal. Retry storage is empty;
+anon/authenticated/service_role have no access. Inventory tables/private costing
+lines remain empty, old costing fields NULL and sequence `1 / is_called=false`.
+
+Security/performance advisors reported no new WARN/ERROR findings. The only new
+notice is the expected INFO for [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)
+on the closed retry table. Existing notices remain unchanged.
+
+No app deployment, positive production receipt through the new path, reset,
+seed, inventory activation or invoice-counter reset occurred. Normal business
+writes may resume. Live use and safe coexistence/closure of competing writers
+remain future work; this deployment does not fix the current multi-request
+payment/sale workflows. Main integration and publication of these deployment
+notes are not part of the database deployment and remain pending.
 
 ## Review and later deployment
 
