@@ -4,7 +4,10 @@ Status (2026-10-01): implemented and tested locally on
 `codex/de05-security-gate-foundation`. Independent review reported no actionable
 findings; the owner approved commit/push and production deployment. Commit `274fc6b51cbf2bf1afc247b49fa343931e3dff70` is pushed; the working tree
 was clean after the commit. The reviewed app and database migration are now deployed;
-owner/staff live saves passed. Super-admin page checks passed; the final human API check remains pending.
+owner/staff live saves and super-admin page checks passed. The final human
+selected-tenant stock API denial was subsequently confirmed on 2026-10-01;
+the previously outstanding privacy/security checkpoint is closed. See the final
+verification below.
 
 Platform administrators may manage business setup, plans, status and the existing
 account/membership contact metadata used by platform management. They must not
@@ -198,3 +201,22 @@ handler tests cover write denial, but no live HTTP write-denial probe was made.
 Normal business writes remain paused until the final check completes.
 The existing nontransactional edit risk remains; this correction does not activate
 DE-05 valuation or implement future posting functions.
+
+
+## Final manual API verification — 2026-10-01
+
+During the subsequently approved DE-05 core deployment, the owner signed in as
+super-admin and reported the selected-tenant stock API response in normal
+Chrome: `{"error":"Tenant business access is forbidden"}`. Both automated
+browser surfaces blocked API navigation before an app response, so those
+attempts were not counted as successful checks. The owner-supplied result
+completes the outstanding live API read check; together with the earlier
+owner/staff saves, platform pages and business-page denials, the privacy/security
+checkpoint is closed. No live HTTP write-denial probe was performed as
+super-admin; local route/database tests cover those paths.
+
+The subsequent inactive core migration was deployed and read-only verified,
+with all 25 public table fingerprints, counters and existing security unchanged.
+Normal business writes may resume. The known nontransactional edit risk remains
+for the later atomic posting work; costing remains inactive. See
+`de05-moving-average-core.md` for the deployment record.

@@ -1,21 +1,24 @@
-# DE-05 Moving-Average Costing Engine — local review packet
+# DE-05 Moving-Average Costing Engine — review and deployment record
 
 Status on 2026-10-01: implemented and tested locally. Independent review found
 three P2 concerns; focused independent re-review confirmed all three resolved
-with no new actionable issue. The owner approved commit and push; production
-deployment and verification remain pending.
-Costing remains inactive. No production SQL, data reset, opening-stock seed or
-production deployment was performed. Commit/push is now authorized. Synthetic
-costing records existed only inside new disposable, network-isolated test
-databases, which were removed afterward.
+with no new actionable issue. Commit `8acadc8bf7ee25b0e1b62548eeb31d3b4f34c5cc`
+is pushed on `codex/de05-moving-average-core`, with local/remote SHA matching.
+The owner-approved migration is deployed and read-only verified in production.
+Costing remains inactive, with no app integration or access granted. No reset,
+opening-stock seed, invoice-counter change or production posting was performed.
+Core regression records existed only in synthetic databases. The separately
+approved production-copy rehearsal below used a fresh private backup; its
+disposable container was removed.
 
 The starting checkout was clean on `codex/de05-security-gate-foundation` at
 `7cd669feb5c67637f14a514d11c03b5c4c28455f`; local `main` and `origin/main`
 pointed to the same commit. Work is now on local branch
 `codex/de05-moving-average-core`; this packet accompanies the approved commit.
 The owner confirms the security correction is deployed on main at `7cd669f`.
-The final manual super-admin API check is still pending. The security checkpoint
-is **not closed**; these local tests do not substitute for that check.
+The final manual super-admin stock API check passed through the owner-reported
+response, completing the previously outstanding privacy/security checkpoint.
+Its evidence and remaining testing limits are recorded below.
 
 ## Review files
 
@@ -188,10 +191,11 @@ Results on 2026-10-01:
   files. Default `npm run build` cannot load native SWC on this Mac and reports
   unsupported Turbopack WASM; the supported Webpack fallback passed.
 
-The schema fixture is not a full production restore. No live app write checks,
+The schema fixture is not a full production restore. During initial implementation/review, no live app write checks,
 production advisors, remote catalog verification or production backup rehearsal
-were performed for this chunk. The final manual super-admin API check remains
-pending and cannot be closed by these tests.
+were performed for this chunk. The subsequently authorized production-copy
+rehearsal, read-only deployment verification and manual API result are recorded
+below; the synthetic suite alone was not used to close the live check.
 
 ## Independent review and later deployment
 
@@ -211,8 +215,9 @@ confirmed all three resolved and found no new actionable issue. It independently
 reran 617 core checks, existing 89/249/162 database checks, 121 app tests,
 TypeScript, focused lint and whitespace checks, using only synthetic databases;
 it made no repository changes. The build was not rerun for the corrections.
-The owner approved commit/push. Production deployment approval, rehearsal and
-verification remain pending.
+The owner approved commit/push, which is complete. Production deployment was
+subsequently approved and completed, with backup/rehearsal and verification
+recorded below.
 
 Before any separately authorized deployment, finish the outstanding manual
 security API check, inspect the current catalog/ownership/default privileges,
@@ -231,3 +236,92 @@ with no CASCADE and no sequence/counter reset. Known dependency failures roll ba
 the entire recovery. PostgreSQL does not track every PL/pgSQL body dependency;
 review future callers before using the recovery script. Once valuation has been
 used, preserve history and prepare a separately reviewed forward recovery.
+
+## Approved production preparation — 2026-10-01
+
+The owner approved production deployment, confirmed sales/purchases/payments,
+stock/category and permission changes paused, and approved a fresh private
+public-schema/business-data/roles backup under
+`/Users/khubaib/.codex/backups/doctors-egg/de05-core-predeployment-20261001/`.
+The backup is in subfolder `backup-0gy_f76f`, outside Git, with directory mode
+0700 and file mode 0600. Managed Auth/Storage are excluded; this is not a full
+platform clone. Auth UUID stubs and extension prerequisites were supplied only
+inside the disposable local restore.
+
+Read-only production verification confirmed PostgreSQL 17.6, the five expected
+prior migrations, absent core, empty foundation tables, NULL legacy costing,
+unchanged expected permission/inactive-guard function hashes, closed effective
+table/column/sequence access for all three app roles, and sequence
+last_value=1/is_called=false. The existing security-advisor warnings remain;
+no security setting or grant was changed during preparation.
+
+The fresh network-isolated PostgreSQL 17.6 restore matched all 25 paused
+production table fingerprints. The exact migration, opened-access atomic
+refusal probes, unused rollback and reapplication passed 43 checks. Local
+posting against the restored schema confirmed rounding from 30 eggs/1 paisa
+to 10 eggs/zero paisa and full depletion; unsupported isolation and revisions
+were refused. These postings were rolled back; only the disposable sequence
+advanced, and used-state recovery correctly refused. No sequence was reset.
+The container was removed and private checksums/diagnostics retained.
+
+The CLI dry run (`--skip-vault`, without seeds or roles) lists only
+`20261001093952_de05_moving_average_core.sql`. Its reviewed/rehearsed SHA-256 is
+`7ca92bb1600ab09d222edd597e3f97fe1ad44b4325c88d4dc23098585bf2a82e`.
+
+The super-admin login was confirmed in the app's `/admin` panel. Both automated
+browser surfaces blocked direct stock API navigation with a client-side block;
+this is not evidence of an application denial. The owner has been asked to
+open the selected-tenant stock API in normal Chrome and return its response.
+At the preparation checkpoint that result was pending and no migration had
+been applied. The subsequent manual result and completed deployment follow.
+
+
+## Approved production deployment — 2026-10-01
+
+The owner reported the selected-tenant stock API response while signed in as
+super-admin in normal Chrome:
+
+```json
+{"error":"Tenant business access is forbidden"}
+```
+
+This completes the previously outstanding manual privacy/security read check,
+together with the earlier deployed owner/staff workflow and platform-page
+checks. The response was supplied by the owner; the browser tool could not read
+that API URL. No live HTTP write-denial probe was performed as super-admin.
+Local route/database tests cover those denials; no positive platform business
+write was attempted.
+
+Immediately before applying, all 25 production table fingerprints and legacy
+security/catalog metadata still matched the paused baseline. The CLI then
+applied only `20261001093952_de05_moving_average_core.sql`, with `--skip-vault`
+and no seeds or role import. Remote migration history confirms the exact
+version/name. Source remains reviewed commit `8acadc8bf7ee25b0e1b62548eeb31d3b4f34c5cc`
+on the feature branch; main integration is separate and has not been performed.
+No application source or Vercel production deployment was changed.
+
+Read-only post-deployment verification confirmed:
+
+- All 25 pre-existing public table counts/fingerprints, including invoice
+  counters, are identical to the paused backup.
+- Legacy policies, public functions/owners/grants, views and guard triggers are
+  unchanged. Production private core functions, line columns/constraints,
+  actor column, RLS and effective access match the restored rehearsal.
+- All three foundation tables and private operation lines are empty; legacy
+  costing fields remain NULL. Sequence last_value=1/is_called=false. Inspection
+  did not call nextval or setval.
+- anon/authenticated/service_role have no foundation table/column/sequence
+  privileges and no private core schema/table/function access. No activation
+  flag or permission grant was added.
+- Security advisors have no new warnings/errors. Their new informational
+  [RLS-without-policy notice](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)
+  concerns deliberately closed, owner-only `de05_costing.operation_lines`;
+  adding app access/policies would contradict this inactive phase. Existing
+  role-helper/invoice-allocator and leaked-password-protection warnings remain.
+
+Private backup/rehearsal/apply logs, checksums and before/after evidence are
+retained under `backup-0gy_f76f` with private permissions. No production costing
+function was invoked, inventory seeded or counter reset. Current sale/purchase
+creation and reporting behavior remain unchanged. Normal writes may resume.
+Future trusted posting wrappers, payment/FIFO integrations, shared revisions,
+reader cutover and activation remain separately scoped work.
