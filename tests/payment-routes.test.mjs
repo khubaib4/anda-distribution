@@ -90,6 +90,7 @@ async function loadPost(route, options = {}) {
   }
 
   const context = {
+    customerAccountsEnabled: () => false,
     createClient: async () => supabase,
     createAdminClient: () => { calls.adminClients++; return admin },
     NextResponse,

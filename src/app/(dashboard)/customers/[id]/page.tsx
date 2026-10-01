@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import CustomerAccountActions from '@/components/customers/customer-account-actions'
+import AllocationFields from '@/components/customers/allocation-fields'
+import { useCustomerAccountRequest } from '@/hooks/use-customer-account-request'
+import { moneyInputToPaisa, formatAccountPKR } from '@/lib/customer-account-money'
+import { cache, createCacheScope } from '@/lib/cache'
 import TenantLink from '@/components/tenant-link'
 import {
   ArrowLeft,
@@ -21,7 +26,7 @@ import {
   type LedgerData,
 } from '@/lib/customer-ledger-pdf'
 import { useTenant } from '@/lib/tenant-client'
-import type { CustomerBalance, BankAccountBalance } from '@/types'
+import type { CustomerBalance, BankAccountBalance, Sale } from '@/types'
 import { SkeletonList } from '@/components/ui/skeleton'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
@@ -30,31 +35,24 @@ function accountLabel(account: BankAccountBalance): string {
   return `${account.bank_name} — ${account.account_holder}`
 }
 
-interface LedgerEntry {
-  id:              string
-  entry_type:      'sale' | 'payment'
-  entry_date:      string
-  description:     string
-  debit_paisa:     number
-  credit_paisa:    number
-  running_balance: number
-  invoice_number?: string
-  payment_method?: string
-}
-
 export default function CustomerDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
-  const { logoUrl } = useTenant()
+  const { logoUrl, userId, tenantId } = useTenant()
   const tenantFetch = useTenantFetch()
 
   const [customer,     setCustomer]     = useState<CustomerBalance | null>(null)
   const [ledgerData,   setLedgerData]   = useState<LedgerData | null>(null)
   const [loadingCust,  setLoadingCust]  = useState(true)
   const [loadingLedger,setLoadingLedger]= useState(true)
+  const { withRequestId, resetRequest } = useCustomerAccountRequest()
+  const [allocationMode, setAllocationMode] = useState<'old_first' | 'sale_only'>('old_first')
+  const [selectedSaleId, setSelectedSaleId] = useState('')
+  const [customerSales, setCustomerSales] = useState<Sale[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showPayForm,  setShowPayForm]  = useState(false)
 
   // Payment form state
@@ -75,8 +73,9 @@ export default function CustomerDetailPage({
       if (!res.ok) throw new Error('Failed to load customer')
       const data = await res.json()
       setCustomer(data)
+      if (data.accounts_enabled) await loadSales()
     } catch {
-      // ignore
+      setLoadError('Unable to load customer account. Please reload the page.')
     } finally {
       setLoadingCust(false)
     }
@@ -90,7 +89,7 @@ export default function CustomerDetailPage({
       const data = await res.json()
       setLedgerData(data)
     } catch {
-      // ignore
+      setLoadError('Unable to load customer account. Please reload the page.')
     } finally {
       setLoadingLedger(false)
     }
@@ -113,41 +112,54 @@ export default function CustomerDetailPage({
       .catch(console.error)
   }, [tenantFetch])
 
+  async function loadSales() {
+    const res = await tenantFetch(`/api/sales?customer_id=${id}`)
+    if (!res.ok) {setLoadError('Unable to load customer invoices'); return}
+    setCustomerSales((await res.json()).filter((sale: Sale) => (sale.remaining_paisa ?? 0) > 0))
+  }
+
+  async function refreshAccount() {
+    const scope = createCacheScope(userId, tenantId)
+    if (scope) cache.invalidatePattern(scope, '/api/')
+    await Promise.all([loadCustomer(), loadLedger(), loadSales()])
+  }
+
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault()
     setPayError(null)
 
-    const amount = parseFloat(payAmount)
-    if (!payAmount || isNaN(amount) || amount <= 0) {
+    const amountPaisa = moneyInputToPaisa(payAmount)
+    if (amountPaisa === null || amountPaisa <= 0) {
       setPayError('Enter a valid amount')
       return
     }
 
+    if (customer?.accounts_enabled && allocationMode === 'sale_only' && !selectedSaleId) {
+      setPayError('Select an invoice'); return
+    }
     setPaying(true)
     try {
+      const payload = {
+        customer_id: id, amount_paisa: amountPaisa, payment_date: payDate, payment_method: payMethod,
+        reference: payReference || null, notes: payNotes || null,
+        ...(payMethod === 'bank_transfer' && payBankAccountId ? {bank_account_id: payBankAccountId} : {}),
+        ...(customer?.accounts_enabled ? {allocation_mode: allocationMode, ...(allocationMode === 'sale_only' ? {sale_id: selectedSaleId} : {})} : {}),
+      }
       const res = await tenantFetch('/api/payments', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_id:    id,
-          amount_paisa:   Math.round(amount * 100),
-          payment_date:   payDate,
-          payment_method: payMethod,
-          reference:      payReference || null,
-          notes:          payNotes     || null,
-          ...(payMethod === 'bank_transfer' && payBankAccountId
-            ? { bank_account_id: payBankAccountId }
-            : {}),
-        }),
+        body: JSON.stringify(customer?.accounts_enabled ? withRequestId(payload) : payload),
       })
 
       const data = await res.json()
       if (!res.ok) {
         setPayError(data.error ?? 'Failed to record payment')
+        if (res.status === 409) await refreshAccount()
         setPaying(false)
         return
       }
 
+      resetRequest()
       // Reset form
       setPayAmount('')
       setPayReference('')
@@ -156,15 +168,16 @@ export default function CustomerDetailPage({
       setShowPayForm(false)
 
       // Reload
-      await Promise.all([loadCustomer(), loadLedger()])
+      await refreshAccount()
     } catch {
-      setPayError('Network error — please try again')
+      setPayError(customer?.accounts_enabled ? 'Network error — retry with the same details to avoid a duplicate' : 'Network error — please try again')
     } finally {
       setPaying(false)
     }
   }
 
   const balance    = ledgerData?.summary.closing_balance ?? 0
+  const accountMoney = customer?.accounts_enabled ? formatAccountPKR : formatPKR
   const isOverpaid = balance < 0
 
   return (
@@ -212,12 +225,14 @@ export default function CustomerDetailPage({
               {ledgerData && customer && (
                 <button
                   type="button"
-                  onClick={() => {
-                    generateCustomerLedgerPDF(
-                      customer,
-                      ledgerData,
-                      logoUrl,
-                    ).catch(console.error)
+                  onClick={async () => {
+                    try {
+                      const res = await tenantFetch(`/api/customers/${id}/ledger`)
+                      if (!res.ok) throw new Error('Unable to refresh')
+                      const fresh = await res.json()
+                      setLedgerData(fresh)
+                      await generateCustomerLedgerPDF(customer, fresh, logoUrl)
+                    } catch { setLoadError('Unable to refresh the statement. Please try again.') }
                   }}
                   className="btn-secondary"
                 >
@@ -239,35 +254,41 @@ export default function CustomerDetailPage({
 
       {/* Balance summary cards */}
       {!loadingLedger && ledgerData && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className={`grid ${ledgerData.summary.accounts_enabled ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-3 mb-6`}>
           <div className="stat-card">
             <p className="stat-label">Total sales</p>
             <p className="stat-value text-base">
-              {formatPKR(ledgerData.summary.total_debit_paisa)}
+              {(ledgerData.summary.accounts_enabled ? formatAccountPKR : formatPKR)(ledgerData.summary.total_sales_paisa ?? ledgerData.summary.total_debit_paisa)}
             </p>
           </div>
           <div className="stat-card">
-            <p className="stat-label">Total paid</p>
+            <p className="stat-label">{ledgerData.summary.accounts_enabled ? 'Total received' : 'Total paid'}</p>
             <p className="stat-value text-base text-success">
-              {formatPKR(ledgerData.summary.total_credit_paisa)}
+              {(ledgerData.summary.accounts_enabled ? formatAccountPKR : formatPKR)(ledgerData.summary.total_paid_paisa ?? ledgerData.summary.total_credit_paisa)}
             </p>
           </div>
           <div className="stat-card">
             <p className="stat-label">
-              {isOverpaid ? 'Advance' : 'Balance due'}
+              {ledgerData.summary.accounts_enabled ? 'Balance due' : isOverpaid ? 'Advance' : 'Balance due'}
             </p>
             <p className={`stat-value text-base ${
-              isOverpaid
+              isOverpaid && !ledgerData.summary.accounts_enabled
                 ? 'text-success'
-                : balance > 0
+                : (ledgerData.summary.due_paisa ?? balance) > 0
                   ? 'text-danger'
                   : 'text-stone-900'
             }`}>
-              {formatPKR(Math.abs(balance))}
+              {(ledgerData.summary.accounts_enabled ? formatAccountPKR : formatPKR)(ledgerData.summary.due_paisa ?? Math.abs(balance))}
             </p>
           </div>
+          {ledgerData.summary.accounts_enabled && <div className="stat-card"><p className="stat-label">Available advance</p><p className="stat-value text-base text-success">{(ledgerData.summary.accounts_enabled ? formatAccountPKR : formatPKR)(ledgerData.summary.advance_paisa ?? 0)}</p></div>}
         </div>
       )}
+
+      {loadError && <p role="alert" className="text-sm text-danger mb-4">{loadError}</p>}
+      {customer?.accounts_enabled && ledgerData && <CustomerAccountActions customerId={id}
+        opening={ledgerData.summary.opening_balance ?? null} due={ledgerData.summary.due_paisa ?? 0}
+        advance={ledgerData.summary.advance_paisa ?? 0} sales={customerSales} onSaved={refreshAccount} />}
 
       {/* Record payment form */}
       {showPayForm && (
@@ -282,6 +303,8 @@ export default function CustomerDetailPage({
               </div>
             )}
 
+            {customer?.accounts_enabled && <AllocationFields mode={allocationMode} onModeChange={setAllocationMode}
+              sales={customerSales} saleId={selectedSaleId} onSaleChange={setSelectedSaleId} />}
             <div className="form-row">
               <div className="form-group">
                 <label className="label">
@@ -425,7 +448,7 @@ export default function CustomerDetailPage({
                     <th>Description</th>
                     <th className="text-right">Debit</th>
                     <th className="text-right">Credit</th>
-                    <th className="text-right">Balance</th>
+                    <th className="text-right">{customer?.accounts_enabled ? 'Net balance' : 'Balance'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,6 +469,7 @@ export default function CustomerDetailPage({
                           <div>
                             <p className="text-sm text-stone-900">
                               {entry.description}
+                              {entry.details?.amount_paisa ? ` — ${accountMoney(entry.details.amount_paisa)}` : ''}
                             </p>
                             {entry.payment_method && (
                               <p className="text-2xs text-stone-400 capitalize">
@@ -458,7 +482,7 @@ export default function CustomerDetailPage({
                       <td className="text-right">
                         {entry.debit_paisa > 0 ? (
                           <span className="amount text-sm text-danger">
-                            {formatPKR(entry.debit_paisa)}
+                            {accountMoney(entry.debit_paisa)}
                           </span>
                         ) : (
                           <span className="text-stone-300">—</span>
@@ -467,7 +491,7 @@ export default function CustomerDetailPage({
                       <td className="text-right">
                         {entry.credit_paisa > 0 ? (
                           <span className="amount text-sm text-success">
-                            {formatPKR(entry.credit_paisa)}
+                            {accountMoney(entry.credit_paisa)}
                           </span>
                         ) : (
                           <span className="text-stone-300">—</span>
@@ -481,9 +505,10 @@ export default function CustomerDetailPage({
                               ? 'text-success'
                               : 'text-stone-500'
                         }`}>
+                          {customer?.accounts_enabled && entry.running_balance !== 0 ? (entry.running_balance > 0 ? 'Net due ' : 'Net credit ') : ''}
                           {entry.running_balance === 0
                             ? '—'
-                            : formatPKR(Math.abs(entry.running_balance))
+                            : accountMoney(Math.abs(entry.running_balance))
                           }
                         </span>
                       </td>
@@ -497,19 +522,19 @@ export default function CustomerDetailPage({
                     <td colSpan={2} className="px-4 py-2.5">
                       <span className="text-xs font-semibold text-stone-600
                                        uppercase tracking-wider">
-                        Closing balance
+                        {customer?.accounts_enabled ? 'Net balance' : 'Closing balance'}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="amount text-sm font-semibold text-danger">
-                        {formatPKR(
+                        {accountMoney(
                           ledgerData?.summary.total_debit_paisa ?? 0
                         )}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="amount text-sm font-semibold text-success">
-                        {formatPKR(
+                        {accountMoney(
                           ledgerData?.summary.total_credit_paisa ?? 0
                         )}
                       </span>
@@ -524,7 +549,7 @@ export default function CustomerDetailPage({
                       }`}>
                         {balance === 0
                           ? 'Settled'
-                          : formatPKR(Math.abs(balance))
+                          : accountMoney(Math.abs(balance))
                         }
                       </span>
                     </td>
@@ -566,12 +591,12 @@ export default function CustomerDetailPage({
                     <div className="text-right flex-shrink-0">
                       {entry.debit_paisa > 0 && (
                         <p className="amount text-sm font-medium text-danger">
-                          +{formatPKR(entry.debit_paisa)}
+                          +{accountMoney(entry.debit_paisa)}
                         </p>
                       )}
                       {entry.credit_paisa > 0 && (
                         <p className="amount text-sm font-medium text-success">
-                          -{formatPKR(entry.credit_paisa)}
+                          -{accountMoney(entry.credit_paisa)}
                         </p>
                       )}
                       <p className={`amount text-xs mt-0.5 ${
@@ -579,7 +604,7 @@ export default function CustomerDetailPage({
                           ? 'text-danger'
                           : 'text-success'
                       }`}>
-                        Bal: {formatPKR(Math.abs(entry.running_balance))}
+                        {customer?.accounts_enabled ? (entry.running_balance < 0 ? 'Net credit: ' : 'Net due: ') : 'Bal: '}{accountMoney(Math.abs(entry.running_balance))}
                       </p>
                     </div>
                   </div>
@@ -591,7 +616,7 @@ export default function CustomerDetailPage({
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-semibold text-stone-600
                                    uppercase tracking-wider">
-                    Closing balance
+                    {customer?.accounts_enabled ? 'Net balance' : 'Closing balance'}
                   </span>
                   <span className={`amount text-base font-bold ${
                     balance > 0
@@ -600,7 +625,7 @@ export default function CustomerDetailPage({
                         ? 'text-success'
                         : 'text-stone-600'
                   }`}>
-                    {balance === 0 ? 'Settled' : formatPKR(Math.abs(balance))}
+                    {balance === 0 ? 'Settled' : accountMoney(Math.abs(balance))}
                   </span>
                 </div>
               </div>

@@ -12,6 +12,7 @@ const LIST_TTL = 15000
 interface Filters {
   type?:     string
   inactive?: boolean
+  module?: 'sales'
 }
 
 export function useCustomers(filters: Filters = {}) {
@@ -19,11 +20,12 @@ export function useCustomers(filters: Filters = {}) {
   const tenantFetch = useTenantFetch()
   const url = useMemo(() => {
     const params = new URLSearchParams()
+    if (filters.module) params.set('module', filters.module)
     if (filters.type)     params.set('type',     filters.type)
     if (filters.inactive) params.set('inactive', 'true')
     const qs = params.toString()
     return `/api/customers${qs ? `?${qs}` : ''}`
-  }, [filters.type, filters.inactive])
+  }, [filters.type, filters.inactive, filters.module])
 
   const { data, loading, error, refetch } = useCachedFetch<CustomerBalance[]>(
     url,

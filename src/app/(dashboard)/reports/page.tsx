@@ -1,10 +1,9 @@
 'use client'
 
+import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+
 import { useState, useEffect, useCallback } from 'react'
-import {
-  formatPKR,
-  formatQty,
-} from '@/lib/utils'
+import { formatQty } from '@/lib/utils'
 import { businessDateString, shiftCalendarDate } from '@/lib/business-date'
 import { useTenant } from '@/lib/tenant-client'
 import AccessDenied from '@/components/access-denied'

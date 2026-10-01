@@ -138,9 +138,12 @@ export interface Sale {
   total_paisa?: number
   paid_paisa?: number
   remaining_paisa?: number
+  advance_used_paisa?: number
+  account_summary?: CustomerAccountSummary
 }
 
 export interface SaleItem {
+  line_total_paisa?: number
   id: string
   sale_id: string
   egg_category_id: string
@@ -233,6 +236,30 @@ export interface CustomerBalance {
   total_sales_paisa: number
   total_paid_paisa: number
   balance_paisa: number
+  accounts_enabled?: boolean
+  due_paisa?: number
+  advance_paisa?: number
+  opening_balance?: CustomerOpeningBalance | null
+}
+
+export interface CustomerOpeningBalance {
+  id: string
+  balance_type: 'due' | 'advance'
+  amount_paisa: number
+  entry_date: string
+  notes: string | null
+  updated_at: string
+}
+
+export interface CustomerAccountSummary {
+  accounts_enabled: boolean
+  total_sales_paisa: number
+  total_paid_paisa: number
+  due_paisa: number
+  advance_paisa: number
+  balance_paisa: number
+  balance_as_of: string
+  opening_balance: CustomerOpeningBalance | null
 }
 
 export interface PartnerCapitalSummary {

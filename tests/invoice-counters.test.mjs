@@ -21,7 +21,7 @@ function loadRoute(path, imports) {
   runInNewContext(code, {
     module: loadedModule,
     exports: loadedModule.exports,
-    require: name => imports[name] ?? {},
+    require: name => imports[name] ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? {},
     URL,
     console: { error() {} },
   }, { filename: path })

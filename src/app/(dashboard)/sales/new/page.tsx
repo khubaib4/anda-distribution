@@ -1,5 +1,11 @@
 'use client'
 
+import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+
+import AllocationFields from '@/components/customers/allocation-fields'
+import { moneyInputToPaisa, previewCustomerBalance, formatAccountPKR } from '@/lib/customer-account-money'
+import { useCustomerAccountRequest } from '@/hooks/use-customer-account-request'
+
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
@@ -13,7 +19,6 @@ import SaleItemRow, {
 } from '@/components/sales/sale-item-row'
 import {
   todayString,
-  formatPKR,
   formatQty,
   toPaisa,
   effectiveItemLineTotalPaisa,
@@ -21,7 +26,7 @@ import {
 } from '@/lib/utils'
 import { cache, createCacheScope } from '@/lib/cache'
 import { useTenant } from '@/lib/tenant-client'
-import type { BankAccountBalance } from '@/types'
+import type { BankAccountBalance, CustomerAccountSummary } from '@/types'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 function accountLabel(account: BankAccountBalance): string {
@@ -47,7 +52,7 @@ export default function NewSalePage() {
   const canNavigateAfterMutation = usePostMutationNavigationGuard()
   const { userId, tenantId } = useTenant()
   const tenantFetch = useTenantFetch()
-  const { customers }  = useCustomers()
+  const { customers }  = useCustomers({ module: 'sales' })
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
 
@@ -63,6 +68,14 @@ export default function NewSalePage() {
   const [partialMethod,     setPartialMethod]     = useState('cash')
   const [partialBankAccountId, setPartialBankAccountId] = useState('')
   const [bankAccounts,  setBankAccounts]  = useState<BankAccountBalance[]>([])
+  const { withRequestId, resetRequest } = useCustomerAccountRequest()
+  const [account, setAccount] = useState<CustomerAccountSummary | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [balanceError, setBalanceError] = useState<string | null>(null)
+  const [amountReceived, setAmountReceived] = useState('')
+  const [allocationMode, setAllocationMode] = useState<'old_first' | 'sale_only'>('old_first')
+  const [useAdvance, setUseAdvance] = useState(false)
+  const [advanceAmount, setAdvanceAmount] = useState('')
   const [notes,         setNotes]         = useState('')
 
   const [saleDiscountOn,   setSaleDiscountOn]   = useState(false)
@@ -86,6 +99,17 @@ export default function NewSalePage() {
       )
       .catch(console.error)
   }, [tenantFetch])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!customerId) return
+    tenantFetch(`/api/customers/${customerId}/account-summary?module=sales`)
+      .then(async res => {if (!res.ok) throw new Error('Unable to load the latest customer balance'); return res.json()})
+      .then(data => {if (!cancelled) setAccount(data)})
+      .catch(() => {if (!cancelled) setBalanceError('Unable to load the latest customer balance. Select the customer again to retry.')})
+      .finally(() => {if (!cancelled) setBalanceLoading(false)})
+    return () => {cancelled = true}
+  }, [customerId, tenantFetch])
 
   const handleItemChange = useCallback(
     (id: string, patch: Partial<SaleItemDraft>) => {
@@ -119,6 +143,11 @@ export default function NewSalePage() {
   }, [saleDiscountOn, saleDiscountType, saleDiscountValue, subtotalPaisa])
 
   const grandTotalPaisa = subtotalPaisa - saleDiscountAmountPaisa
+
+  const receivedPaisa = moneyInputToPaisa(amountReceived)
+  const advancePaisa = useAdvance ? moneyInputToPaisa(advanceAmount) : 0
+  const balancePreview = account?.accounts_enabled ? previewCustomerBalance(account, grandTotalPaisa,
+    receivedPaisa ?? 0, advancePaisa ?? 0, allocationMode) : null
 
   const totalTrays = items.reduce(
     (sum, item) => sum + item.quantity_peti * 12 + item.quantity_tray,
@@ -166,7 +195,12 @@ export default function NewSalePage() {
       }
     }
 
-    if (paymentStatus === 'partial') {
+    if (!account || balanceLoading || balanceError) {setError(balanceError ?? 'Wait for the customer balance to load');return}
+    if (account.accounts_enabled && (receivedPaisa === null || advancePaisa === null || (useAdvance && advancePaisa <= 0) || advancePaisa > (balancePreview?.max_advance_paisa ?? 0))) {
+      setError('Enter valid amounts and use no more than the available advance and eligible balance');return
+    }
+
+    if (!account.accounts_enabled && paymentStatus === 'partial') {
       const paid = parseFloat(partialAmount)
       if (!partialAmount || isNaN(paid) || paid <= 0) {
         setError('Amount paid is required for partial payment')
@@ -206,7 +240,14 @@ export default function NewSalePage() {
         })),
       }
 
-      if (paymentStatus === 'paid') {
+      if (account.accounts_enabled) {
+        delete payload.payment_status
+        payload.amount_received_paisa = receivedPaisa
+        payload.advance_paisa = advancePaisa
+        payload.allocation_mode = allocationMode
+        payload.payment_method = paymentMethod
+        if (paymentMethod === 'bank_transfer' && bankAccountId) payload.bank_account_id = bankAccountId
+      } else if (paymentStatus === 'paid') {
         payload.payment_method = paymentMethod
         if (paymentMethod === 'bank_transfer' && bankAccountId) {
           payload.bank_account_id = bankAccountId
@@ -222,22 +263,27 @@ export default function NewSalePage() {
       const res = await tenantFetch('/api/sales', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body:    JSON.stringify(account.accounts_enabled ? withRequestId(payload) : payload),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
         setError(data.error ?? 'Failed to save sale')
+        if (res.status === 409 && account.accounts_enabled) {
+          const latest = await tenantFetch(`/api/customers/${customerId}/account-summary?module=sales`)
+          if (latest.ok) setAccount(await latest.json())
+        }
         setSaving(false)
         return
       }
 
-      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
+      resetRequest()
+      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/')
       if (!canNavigateAfterMutation()) return
       router.push('/sales')
     } catch {
-      setError('Network error — please try again')
+      setError(account?.accounts_enabled ? 'Network error — retry with the same details to avoid a duplicate' : 'Network error — please try again')
       setSaving(false)
     }
   }
@@ -272,7 +318,7 @@ export default function NewSalePage() {
             <select
               className="select"
               value={customerId}
-              onChange={e => setCustomerId(e.target.value)}
+              onChange={e => {setCustomerId(e.target.value);setAccount(null);setBalanceError(null);setUseAdvance(false);setAdvanceAmount('');setBalanceLoading(Boolean(e.target.value))}}
               required
             >
               <option value="">Select customer…</option>
@@ -374,22 +420,40 @@ export default function NewSalePage() {
         <div className="card p-4 space-y-4">
           <p className="section-title">Payment</p>
 
-          <div className="form-group">
+          {balanceLoading && <p className="text-sm text-stone-500">Loading customer balance…</p>}
+          {balanceError && <p role="alert" className="text-sm text-danger">{balanceError}</p>}
+          {account?.accounts_enabled ? <>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <p>Previous balance<br /><strong className="text-danger">{formatAccountPKR(account.due_paisa)}</strong></p>
+              <p>Available advance<br /><strong className="text-success">{formatAccountPKR(account.advance_paisa)}</strong></p>
+            </div>
+            <div className="form-group"><label className="label">Amount received (Rs)</label>
+              <input type="number" min="0" step="0.01" className="input" placeholder="0.00" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} />
+              <p className="text-xs text-stone-500 mt-1">Enter new money received today. Any extra becomes advance.</p>
+            </div>
+            <AllocationFields mode={allocationMode} onModeChange={setAllocationMode} advance={account.advance_paisa}
+              useAdvance={useAdvance} onUseAdvance={setUseAdvance} advanceAmount={advanceAmount} onAdvanceAmount={setAdvanceAmount} />
+            <div className="form-group"><label className="label">Payment method</label>
+              <select className="select" value={paymentMethod} onChange={e => {setPaymentMethod(e.target.value);setBankAccountId('')}}>
+                <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="easypaisa">Easypaisa</option><option value="jazzcash">JazzCash</option>
+              </select>
+            </div>
+            {paymentMethod === 'bank_transfer' && <div className="form-group"><label className="label">Bank account</label>
+              <select className="select" value={bankAccountId} onChange={e => setBankAccountId(e.target.value)}><option value="">Select account…</option>
+                {bankAccounts.map(a => <option key={a.bank_account_id} value={a.bank_account_id}>{accountLabel(a)}</option>)}
+              </select>
+            </div>}
+            <div className="form-group"><label className="label">Payment due date</label><input type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
+            {balancePreview && <div className="rounded border border-stone-200 p-3 text-sm space-y-1">
+              <p>Balance due after this sale: <strong className="text-danger">{formatAccountPKR(Math.max(0, balancePreview.due_paisa))}</strong></p>
+              <p>Advance remaining: <strong className="text-success">{formatAccountPKR(Math.max(0, balancePreview.advance_paisa))}</strong></p>
+            </div>}
+          </> : <div className="form-group">
             <label className="label">Payment status</label>
-            <select
-              className="select"
-              value={paymentStatus}
-              onChange={e =>
-                setPaymentStatus(
-                  e.target.value as 'paid' | 'partial' | 'unpaid'
-                )
-              }
-            >
-              <option value="unpaid">Unpaid — collect later</option>
-              <option value="partial">Partial payment</option>
-              <option value="paid">Paid — cash on delivery</option>
+            <select className="select" value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'paid' | 'partial' | 'unpaid')}>
+              <option value="unpaid">Unpaid — collect later</option><option value="partial">Partial payment</option><option value="paid">Paid — cash on delivery</option>
             </select>
-          </div>
+          </div>}
 
           {/* Overall sale discount */}
           <div className="space-y-2">
@@ -456,7 +520,7 @@ export default function NewSalePage() {
             )}
           </div>
 
-          {paymentStatus === 'unpaid' && (
+          {!account?.accounts_enabled && paymentStatus === 'unpaid' && (
             <div className="form-group">
               <label className="label">Payment due date</label>
               <input
@@ -468,7 +532,7 @@ export default function NewSalePage() {
             </div>
           )}
 
-          {paymentStatus === 'partial' && (
+          {!account?.accounts_enabled && paymentStatus === 'partial' && (
             <>
               <div className="form-group">
                 <label className="label">
@@ -537,7 +601,7 @@ export default function NewSalePage() {
             </>
           )}
 
-          {paymentStatus === 'paid' && (
+          {!account?.accounts_enabled && paymentStatus === 'paid' && (
             <>
               <div className="form-group">
                 <label className="label">Payment method</label>

@@ -1,11 +1,12 @@
 'use client'
 
+import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+
 import { useState, useEffect } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { X, Download, Pencil, Printer } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import {
-  formatPKR,
   formatDate,
   formatQty,
   paymentStatusClass,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import SalesReceiptModal from '@/components/sales/sales-receipt-modal'
+import LatestCustomerBalance from './latest-customer-balance'
 import { useTenant } from '@/lib/tenant-client'
 import type { Sale } from '@/types'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
@@ -42,6 +44,22 @@ export default function SaleDetailModal({
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function latestSale(): Promise<Sale | null> {
+    if (!sale?.account_summary) return sale
+    setRefreshing(true)
+    try {
+      const res = await tenantFetch(`/api/sales/${saleId}`)
+      if (!res.ok) throw new Error('Unable to refresh')
+      const data = await res.json()
+      setSale(data)
+      return data
+    } catch {
+      setError('Unable to load the latest balance. Please try again before printing.')
+      return null
+    } finally { setRefreshing(false) }
+  }
 
   useEffect(() => {
     tenantFetch(`/api/sales/${saleId}`)
@@ -56,8 +74,8 @@ export default function SaleDetailModal({
       .finally(() => setLoading(false))
   }, [saleId, tenantFetch])
 
-  const subtotalPaisa = computeSaleSubtotalPaisa(sale?.items ?? [])
-  const totalPaisa = computeSaleTotalPaisa(sale ?? { items: [] })
+  const subtotalPaisa = sale?.account_summary ? sale.subtotal_paisa ?? computeSaleSubtotalPaisa(sale.items ?? []) : computeSaleSubtotalPaisa(sale?.items ?? [])
+  const totalPaisa = sale?.account_summary ? sale.total_paisa ?? computeSaleTotalPaisa(sale) : computeSaleTotalPaisa(sale ?? { items: [] })
   const discountPaisa = subtotalPaisa - totalPaisa
   const { paid_paisa: paidPaisa, remaining_paisa: remainingPaisa } =
     computeSalePaymentBreakdown({
@@ -154,7 +172,7 @@ export default function SaleDetailModal({
                 <div className="space-y-2">
                   {(sale.items ?? []).map(item => {
                     const effectivePrice = effectiveItemPricePaisa(item)
-                    const total = effectiveItemLineTotalPaisa(item)
+                    const total = sale.account_summary ? item.line_total_paisa ?? effectiveItemLineTotalPaisa(item) : effectiveItemLineTotalPaisa(item)
                     const hasDiscount =
                       item.discount_type === 'percentage' || item.discount_type === 'fixed'
                     const hasSaving = total < item.quantity_trays * item.price_per_tray_paisa
@@ -285,7 +303,7 @@ export default function SaleDetailModal({
                 </span>
                 <p className="text-xs text-stone-500 leading-relaxed mt-2">
                   Record customer payments from the customer profile. Invoice
-                  status updates automatically using FIFO.
+                  {sale.account_summary ? 'status follows your saved payment choices.' : 'status updates automatically using FIFO.'}
                 </p>
                 <TenantLink
                   href={`/customers/${sale.customer_id}`}
@@ -296,6 +314,7 @@ export default function SaleDetailModal({
                 </TenantLink>
               </div>
 
+              <LatestCustomerBalance sale={sale} />
               {sale.notes && (
                 <>
                   <div className="divider" />
@@ -313,8 +332,8 @@ export default function SaleDetailModal({
           <div className="modal-footer flex-shrink-0 border-t border-stone-100 flex-col sm:flex-row">
             <button
               type="button"
-              onClick={() => setShowReceipt(true)}
-              disabled={sale.id !== saleId}
+              onClick={async () => { if (await latestSale()) setShowReceipt(true) }}
+              disabled={sale.id !== saleId || refreshing}
               className="btn-primary w-full"
             >
               <Printer className="w-4 h-4" />
@@ -322,8 +341,10 @@ export default function SaleDetailModal({
             </button>
             <button
               type="button"
-              onClick={() => {
-                generateInvoicePDF(sale, logoUrl).catch(console.error)
+              disabled={refreshing}
+              onClick={async () => {
+                const fresh = await latestSale()
+                if (fresh) generateInvoicePDF(fresh, logoUrl).catch(console.error)
               }}
               className="btn-secondary w-full"
             >

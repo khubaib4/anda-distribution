@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx'
 import { businessDateString } from './business-date'
 import { wholeEggsFromWholeTrays } from './quantity'
+import { decimalRatio, roundMoneyRatio } from './exact-money'
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
@@ -271,12 +272,15 @@ export function computeDiscountedPricePaisa(
   }
 
   // Rounded unit price is for storage/display; line totals use the exact line helper.
-  return Math.round(computeDiscountedLineTotalPaisa(
+  const total = computeDiscountedLineTotalPaisa(
     quantityTrays,
     pricePerTrayPaisa,
     discountType,
     discountValue,
-  ) / quantityTrays)
+  )
+  return Number.isSafeInteger(total) && Number.isSafeInteger(quantityTrays)
+    ? Number(roundMoneyRatio(BigInt(total), BigInt(quantityTrays)))
+    : Math.round(total / quantityTrays)
 }
 
 export function computeDiscountedLineTotalPaisa(
@@ -291,16 +295,14 @@ export function computeDiscountedLineTotalPaisa(
     return originalLinePaisa
   }
 
-  let discountPaisa: number
-  if (discountType === 'percentage') {
-    discountPaisa = Math.round(originalLinePaisa * discountValue / 100)
-  } else {
-    discountPaisa = Math.round(
-      discountValue * 100 * quantityTrays / 12,
-    )
-  }
-
-  return Math.max(0, originalLinePaisa - discountPaisa)
+  if (!Number.isSafeInteger(quantityTrays) || !Number.isSafeInteger(pricePerTrayPaisa)
+      || quantityTrays <= 0 || pricePerTrayPaisa <= 0) return originalLinePaisa
+  const original = BigInt(quantityTrays) * BigInt(pricePerTrayPaisa)
+  const value = decimalRatio(discountValue)
+  const discount = discountType === 'percentage'
+    ? roundMoneyRatio(original * value.numerator, BigInt(100) * value.denominator)
+    : roundMoneyRatio(value.numerator * BigInt(100) * BigInt(quantityTrays), BigInt(12) * value.denominator)
+  return Number(discount >= original ? BigInt(0) : original - discount)
 }
 
 export function computeLineDiscountSavingPaisa(
@@ -419,14 +421,13 @@ export function computeDiscountAmountPaisa(
   discountType: DiscountType | null,
   discountValue: number,
 ): number {
-  if (!discountType || discountValue <= 0 || subtotalPaisa <= 0) return 0
-  if (discountType === 'percentage') {
-    return Math.min(
-      subtotalPaisa,
-      Math.round(subtotalPaisa * discountValue / 100),
-    )
-  }
-  return Math.min(subtotalPaisa, Math.round(discountValue * 100))
+  if (!discountType || !Number.isFinite(discountValue) || discountValue <= 0 || subtotalPaisa <= 0) return 0
+  if (!Number.isSafeInteger(subtotalPaisa)) return NaN
+  const value = decimalRatio(discountValue)
+  const discount = discountType === 'percentage'
+    ? roundMoneyRatio(BigInt(subtotalPaisa) * value.numerator, BigInt(100) * value.denominator)
+    : roundMoneyRatio(value.numerator * BigInt(100), value.denominator)
+  return Number(discount >= BigInt(subtotalPaisa) ? BigInt(subtotalPaisa) : discount)
 }
 
 export function validateSaleDiscount(

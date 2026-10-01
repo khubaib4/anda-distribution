@@ -7,7 +7,7 @@ import type { CustomerBalance } from '@/types'
 
 export interface LedgerEntry {
   id:              string
-  entry_type:      'sale' | 'payment'
+  entry_type:      'sale' | 'payment' | 'opening' | 'opening_correction' | 'advance_applied' | 'allocation_released' | 'payment_allocated'
   entry_date:      string
   description:     string
   debit_paisa:     number
@@ -15,6 +15,7 @@ export interface LedgerEntry {
   running_balance: number
   invoice_number?: string
   payment_method?: string
+  details?: { amount_paisa?: number } | null
 }
 
 export interface LedgerData {
@@ -23,6 +24,12 @@ export interface LedgerData {
     total_debit_paisa:  number
     total_credit_paisa: number
     closing_balance:    number
+    accounts_enabled?: boolean
+    total_sales_paisa?: number
+    total_paid_paisa?: number
+    due_paisa?: number
+    advance_paisa?: number
+    opening_balance?: import('@/types').CustomerOpeningBalance | null
   }
 }
 
@@ -87,7 +94,7 @@ export function layoutLedgerRow(doc: jsPDF, entry: LedgerEntry, margin = LEDGER_
 
   const amountLeft = Math.min(...amounts.map(amount => amount.left))
   const descriptionWidth = amountLeft - columns.description - LEDGER_AMOUNT_GAP
-  const descriptionLines = doc.splitTextToSize(entry.description, descriptionWidth) as string[]
+  const descriptionLines = doc.splitTextToSize(entry.description + (entry.details?.amount_paisa ? ` — ${formatPdfPKR(entry.details.amount_paisa)}` : ''), descriptionWidth) as string[]
   const lineCount = Math.max(
     1,
     descriptionLines.length,
@@ -188,25 +195,27 @@ export async function generateCustomerLedgerPDF(
   y += 8
 
   const summaryY = y
-  const boxWidth = (pageWidth - 2 * margin - 8) / 3
+  const accountEnabled = ledgerData.summary.accounts_enabled
+  const boxWidth = (pageWidth - 2 * margin - (accountEnabled ? 12 : 8)) / (accountEnabled ? 4 : 3)
   const balance  = ledgerData.summary.closing_balance
   const summaryItems = [
     {
       label: 'Total Sales',
-      value: ledgerData.summary.total_debit_paisa,
+      value: ledgerData.summary.total_sales_paisa ?? ledgerData.summary.total_debit_paisa,
       color: 'neutral' as const,
     },
     {
-      label: 'Total Paid',
-      value: ledgerData.summary.total_credit_paisa,
+      label: accountEnabled ? 'Total Received' : 'Total Paid',
+      value: ledgerData.summary.total_paid_paisa ?? ledgerData.summary.total_credit_paisa,
       color: 'success' as const,
     },
     {
-      label: balance > 0 ? 'Balance Due' : balance < 0 ? 'Advance' : 'Balance Due',
-      value: Math.abs(balance),
-      color: balance > 0 ? 'danger' as const : 'success' as const,
+      label: accountEnabled ? 'Balance Due' : balance > 0 ? 'Balance Due' : balance < 0 ? 'Advance' : 'Balance Due',
+      value: ledgerData.summary.due_paisa ?? Math.abs(balance),
+      color: (ledgerData.summary.due_paisa ?? balance) > 0 ? 'danger' as const : 'success' as const,
     },
   ]
+  if (accountEnabled) summaryItems.push({ label: 'Available Advance', value: ledgerData.summary.advance_paisa ?? 0, color: 'success' })
 
   summaryItems.forEach((item, index) => {
     const x = margin + index * (boxWidth + 4)
@@ -231,6 +240,14 @@ export async function generateCustomerLedgerPDF(
 
   y = summaryY + 30
 
+  if (accountEnabled && ledgerData.summary.opening_balance) {
+    const opening = ledgerData.summary.opening_balance
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.text(`Previous ${opening.balance_type}: ${formatPdfPKR(opening.amount_paisa)} (${formatDate(opening.entry_date)})`, margin, y)
+    y += 10
+  }
+
   const columns = ledgerColumns(pageWidth, margin)
 
   function drawTableHeader() {
@@ -244,7 +261,7 @@ export async function generateCustomerLedgerPDF(
     doc.text('Description', columns.description, y)
     doc.text('Debit', columns.debit, y, { align: 'right' })
     doc.text('Credit', columns.credit, y, { align: 'right' })
-    doc.text('Balance', columns.balance, y, { align: 'right' })
+    doc.text(accountEnabled ? 'Net balance' : 'Balance', columns.balance, y, { align: 'right' })
     doc.setTextColor(0, 0, 0)
     y += LEDGER_HEADER_HEIGHT
   }
@@ -347,10 +364,10 @@ export async function generateCustomerLedgerPDF(
     balance > 0 ? 'danger' : balance < 0 ? 'success' : 'neutral'
   const closingBal = pdfAmount(Math.abs(balance), closingBalColor)
   const closingRows = [
-    { label: 'TOTAL SALES', amount: closingDebit.text, color: closingDebit },
-    { label: 'TOTAL PAID', amount: closingCredit.text, color: closingCredit },
+    { label: accountEnabled ? 'TOTAL DEBITS' : 'TOTAL SALES', amount: closingDebit.text, color: closingDebit },
+    { label: accountEnabled ? 'TOTAL CREDITS' : 'TOTAL PAID', amount: closingCredit.text, color: closingCredit },
     {
-      label: balance < 0 ? 'ADVANCE' : 'CLOSING BALANCE',
+      label: accountEnabled ? (balance < 0 ? 'NET CREDIT' : 'NET BALANCE') : balance < 0 ? 'ADVANCE' : 'CLOSING BALANCE',
       amount: balance === 0 ? 'Settled' : closingBal.text,
       color: closingBal,
     },

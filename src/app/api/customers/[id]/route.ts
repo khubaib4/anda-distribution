@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, callCustomerAccount } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
@@ -24,6 +25,15 @@ export async function GET(
   }
   if (!customer) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  if (customerAccountsEnabled()) {
+    try {
+      const account = await callCustomerAccount(auth, 'summary', id)
+      return NextResponse.json({ ...customer, customer_id: id, ...account })
+    } catch {
+      return NextResponse.json({ error: 'Unable to load customer balance' }, { status: 503 })
+    }
   }
 
   const { data: salesData, error: salesError } = await tenantEq(

@@ -24,7 +24,7 @@ function invoiceGeneratorAt(instant, random = 0.425) {
     exports: loadedModule.exports,
     require: name => name === './business-date'
       ? { businessDateString: () => businessDateString(new Date(instant)) }
-      : name === './quantity' ? {} : nodeRequire(name),
+      : name === './quantity' ? {} : name === './exact-money' ? nodeRequire('../src/lib/exact-money.ts') : nodeRequire(name),
     Math: math,
   })
   return loadedModule.exports.generateInvoiceNumber

@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, customerAccountResponse } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
@@ -80,6 +81,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (customerAccountsEnabled()) return customerAccountResponse(request, 'create_sale')
   const auth = await authorizeApi(request, { permission: 'sales' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth

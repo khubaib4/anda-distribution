@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatAccountPKR } from '@/lib/customer-account-money'
 import { Plus, Pencil, Phone, ChevronRight } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
@@ -32,9 +33,9 @@ export default function CustomersPage() {
 
   // Summary
   const totalReceivable = customers.reduce(
-    (s, c) => s + Math.max(0, c.balance_paisa), 0
+    (s, c) => s + (c.due_paisa ?? Math.max(0, c.balance_paisa)), 0
   )
-  const withBalance = customers.filter(c => c.balance_paisa > 0).length
+  const withBalance = customers.filter(c => (c.due_paisa ?? c.balance_paisa) > 0).length
 
   async function handleCreate(values: {
     contact_name:  string
@@ -90,7 +91,7 @@ export default function CustomersPage() {
           <div className="stat-card">
             <p className="stat-label">Total receivable</p>
             <p className="stat-value text-xl text-danger">
-              {formatPKR(totalReceivable)}
+              {(customers.some(c => c.accounts_enabled) ? formatAccountPKR : formatPKR)(totalReceivable)}
             </p>
           </div>
           <div className="stat-card">
@@ -201,6 +202,9 @@ export default function CustomersPage() {
                   )}
                 </div>
 
+                {customer.accounts_enabled && (customer.advance_paisa ?? 0) > 0 && (
+                  <p className="text-xs text-success mt-1">Available advance: {formatAccountPKR(customer.advance_paisa ?? 0)}</p>
+                )}
                 {customer.business_name && (
                   <p className="text-xs text-stone-500 truncate">
                     {customer.business_name}
@@ -220,17 +224,17 @@ export default function CustomersPage() {
               {/* Balance + actions */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="text-right">
-                  {customer.balance_paisa > 0 ? (
+                  {(customer.due_paisa ?? customer.balance_paisa) > 0 ? (
                     <>
                       <p className="amount text-sm text-danger font-medium">
-                        {formatPKR(customer.balance_paisa)}
+                        {(customer.accounts_enabled ? formatAccountPKR : formatPKR)(customer.due_paisa ?? customer.balance_paisa)}
                       </p>
                       <p className="text-2xs text-stone-400">due</p>
                     </>
                   ) : customer.balance_paisa < 0 ? (
                     <>
                       <p className="amount text-sm text-success font-medium">
-                        {formatPKR(Math.abs(customer.balance_paisa))}
+                        {(customer.accounts_enabled ? formatAccountPKR : formatPKR)(Math.abs(customer.balance_paisa))}
                       </p>
                       <p className="text-2xs text-stone-400">advance</p>
                     </>

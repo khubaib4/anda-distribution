@@ -30,7 +30,7 @@ function loadModule(path, imports = {}) {
   runInNewContext(code, {
     module: loadedModule,
     exports: loadedModule.exports,
-    require: name => imports[name] ?? (name.startsWith('@/') ? {} : nodeRequire(name)),
+    require: name => imports[name] ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? (name.startsWith('@/') ? {} : nodeRequire(name)),
     console: { error() {} },
     Date,
     URL,
@@ -44,6 +44,7 @@ const utils = loadModule('src/lib/utils.ts', {
   clsx: nodeRequire('clsx'),
   './business-date': businessDate,
   './quantity': quantity,
+  './exact-money': loadModule('src/lib/exact-money.ts'),
 })
 const stockAvailability = loadModule('src/lib/stock-availability.ts', {
   './quantity': quantity,

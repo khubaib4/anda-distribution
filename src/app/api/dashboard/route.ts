@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, callCustomerAccount } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
@@ -107,10 +108,20 @@ export async function GET(request: Request) {
       (paymentsByCustomer[payment.customer_id] ?? 0) + payment.amount_paisa
   }
 
-  const balances = (customers ?? []).map(c => ({
+  let balances = (customers ?? []).map(c => ({
     balance_paisa:
       (salesByCustomer[c.id] ?? 0) - (paymentsByCustomer[c.id] ?? 0),
   }))
+
+  if (customerAccountsEnabled()) {
+    try {
+      const accounts = await callCustomerAccount(auth, 'list', null, { module: 'dashboard' })
+      balances = accounts.filter((c: { is_active: boolean }) => c.is_active)
+        .map((c: { due_paisa: number }) => ({ balance_paisa: c.due_paisa }))
+    } catch {
+      return NextResponse.json({ error: 'Unable to load customer balances' }, { status: 503 })
+    }
+  }
 
   const totalReceivables = balances.reduce(
     (sum, b) => sum + Math.max(0, b.balance_paisa), 0

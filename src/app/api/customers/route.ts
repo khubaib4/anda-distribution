@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, callCustomerAccount } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
@@ -8,6 +9,17 @@ export async function GET(request: Request) {
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
 
+  if (customerAccountsEnabled()) {
+    try {
+      const data = await callCustomerAccount(auth, 'list', null, { module: new URL(request.url).searchParams.get('module') === 'sales' ? 'sales' : 'customers' })
+      const { searchParams } = new URL(request.url)
+      return NextResponse.json(data.filter((c: { is_active: boolean; customer_type: string }) =>
+        (searchParams.get('inactive') === 'true' || c.is_active) &&
+        (!searchParams.get('type') || c.customer_type === searchParams.get('type'))))
+    } catch {
+      return NextResponse.json({ error: 'Unable to load customer balances' }, { status: 503 })
+    }
+  }
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
   const type     = searchParams.get('type')

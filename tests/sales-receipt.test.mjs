@@ -30,6 +30,7 @@ function load(path) {
     module: loadedModule,
     exports: loadedModule.exports,
     require(name) {
+      if (name === '@/hooks/use-tenant-fetch') return { useTenantFetch: () => async () => { throw new Error('Unexpected network request') } }
       if (name.endsWith('.css')) return {}
       if (name.startsWith('@/') || name.startsWith('.')) {
         const base = name.startsWith('@/')
@@ -70,6 +71,7 @@ function receiptSettings(initialStorage = {}, unavailableStorage = false) {
         },
       }
       if (name === 'react-dom') return { createPortal: element => element }
+      if (name === '@/hooks/use-tenant-fetch') return { useTenantFetch: () => async () => { throw new Error('Unexpected network request') } }
       if (name === '@/lib/tenant-client') return { useTenant: () => ({ tenantName: 'Testing', logoUrl: null }) }
       if (name === './sales-receipt-content') return { default: Receipt }
       if (name.endsWith('.css')) return {}

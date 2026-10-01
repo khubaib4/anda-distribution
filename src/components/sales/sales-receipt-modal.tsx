@@ -8,6 +8,7 @@ import { useTenant } from '@/lib/tenant-client'
 import type { Sale } from '@/types'
 import SalesReceiptContent from './sales-receipt-content'
 import styles from './sales-receipt.module.css'
+import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
 const PAPER_PREFERENCE = 'doctors-egg.receipt-paper-width'
 const SIDE_MARGINS = [3, 4, 5, 6, 7, 8]
@@ -34,6 +35,9 @@ export default function SalesReceiptModal({ sale, onClose }: {
   onClose: () => void
 }) {
   const { tenantName, logoUrl } = useTenant()
+  const tenantFetch = useTenantFetch()
+  const [printSale, setPrintSale] = useState(sale)
+  const [refreshing, setRefreshing] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const paper = useRef<HTMLElement>(null)
   const [{ width, sideMargin }, setPaperSettings] = useState(() => {
@@ -57,7 +61,19 @@ export default function SalesReceiptModal({ sale, onClose }: {
     }
   }, [])
 
-  function printReceipt() {
+  async function printReceipt() {
+    if (sale.account_summary) {
+      setRefreshing(true)
+      try {
+        const res = await tenantFetch(`/api/sales/${sale.id}`)
+        if (!res.ok) throw new Error('Unable to refresh')
+        const fresh = await res.json()
+        flushSync(() => setPrintSale(fresh))
+      } catch {
+        setPrintError('Unable to refresh the customer balance. Please try again before printing.')
+        return
+      } finally { setRefreshing(false) }
+    }
     // Measure at the selected physical width; long receipts can paginate.
     const height = Math.ceil((paper.current?.getBoundingClientRect().height ?? 378) * 25.4 / 96) + 2
     flushSync(() => {
@@ -124,7 +140,7 @@ export default function SalesReceiptModal({ sale, onClose }: {
               {SIDE_MARGINS.map(margin => <option key={margin} value={margin}>{margin} mm each side</option>)}
             </select>
           </div>
-          <button type="button" onClick={printReceipt} className="btn-primary">
+          <button type="button" onClick={printReceipt} disabled={refreshing} className="btn-primary">
             <Printer className="w-4 h-4" /> Print receipt
           </button>
         </div>
@@ -147,7 +163,7 @@ export default function SalesReceiptModal({ sale, onClose }: {
           {logoUrl && (
             <Image src={logoUrl} alt="Business logo" width={80} height={80} loading="eager" unoptimized className={styles.logo} />
           )}
-          <SalesReceiptContent sale={sale} businessName={tenantName ?? "Doctor's Egg"} />
+          <SalesReceiptContent sale={printSale} businessName={tenantName ?? "Doctor's Egg"} />
         </article>
       </div>
     </dialog>,

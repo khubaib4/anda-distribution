@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, customerAccountResponse } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (customerAccountsEnabled()) return customerAccountResponse(request, 'receipt')
   const auth = await authorizeApi(request, { permission: 'customers' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth

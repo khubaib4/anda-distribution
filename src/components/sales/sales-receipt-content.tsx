@@ -10,14 +10,15 @@ import {
 import { formatPdfPKR } from '@/lib/pdf-money'
 import type { Sale } from '@/types'
 import styles from './sales-receipt.module.css'
+import LatestCustomerBalance from './latest-customer-balance'
 
 export default function SalesReceiptContent({ sale, businessName }: {
   sale: Sale
   businessName: string
 }) {
   const items = sale.items ?? []
-  const subtotal = computeSaleSubtotalPaisa(items)
-  const total = computeSaleTotalPaisa(sale)
+  const subtotal = sale.account_summary ? sale.subtotal_paisa ?? computeSaleSubtotalPaisa(items) : computeSaleSubtotalPaisa(items)
+  const total = sale.account_summary ? sale.total_paisa ?? computeSaleTotalPaisa(sale) : computeSaleTotalPaisa(sale)
   const discount = subtotal - total
   const payment = computeSalePaymentBreakdown({
     payment_status: sale.payment_status,
@@ -52,7 +53,7 @@ export default function SalesReceiptContent({ sale, businessName }: {
             )}
             <div className={styles.amountRow}>
               <span>Line total</span>
-              <strong>{formatPdfPKR(effectiveItemLineTotalPaisa(item))}</strong>
+              <strong>{formatPdfPKR(sale.account_summary ? item.line_total_paisa ?? effectiveItemLineTotalPaisa(item) : effectiveItemLineTotalPaisa(item))}</strong>
             </div>
           </div>
         ))}
@@ -70,12 +71,14 @@ export default function SalesReceiptContent({ sale, businessName }: {
           <strong>Total</strong><strong>{formatPdfPKR(total)}</strong>
         </div>
         <div className={styles.amountRow}>
-          <span>Paid</span><span>{formatPdfPKR(payment.paid_paisa)}</span>
+          <span>{sale.account_summary ? 'Paid toward this invoice' : 'Paid'}</span><span>{formatPdfPKR(payment.paid_paisa)}</span>
         </div>
         <div className={styles.amountRow}>
-          <strong>Balance due</strong><strong>{formatPdfPKR(payment.remaining_paisa)}</strong>
+          <strong>{sale.account_summary ? 'Balance due on this invoice' : 'Balance due'}</strong><strong>{formatPdfPKR(payment.remaining_paisa)}</strong>
         </div>
+        {sale.account_summary && <div className={styles.amountRow}><span>Advance used for this invoice</span><span>{formatPdfPKR(sale.advance_used_paisa ?? 0)}</span></div>}
         <p>Payment status: {paymentStatusLabel(sale.payment_status)}</p>
+        <LatestCustomerBalance sale={sale} rowClassName={styles.amountRow} />
         <p className={styles.thanks}>Thank you for your business</p>
       </div>
     </>

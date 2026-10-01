@@ -44,7 +44,7 @@ test('date-only display keeps its calendar day in a negative-offset browser', ()
     exports: loadedModule.exports,
     require: name => name === './business-date'
       ? { businessDateString }
-      : name === './quantity' ? {} : nodeRequire(name),
+      : name === './quantity' ? {} : name === './exact-money' ? nodeRequire('../src/lib/exact-money.ts') : nodeRequire(name),
     Date,
   })
 

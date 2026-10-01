@@ -22,7 +22,7 @@ function load(path, imports = {}, globals = {}) {
   const loadedModule = { exports: {} }
   runInNewContext(code, {
     module: loadedModule, exports: loadedModule.exports,
-    require: name => imports[name] ?? {},
+    require: name => imports[name] ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? {},
     Date, URL, console: { error() {} }, ...globals,
   }, { filename: path })
   return loadedModule.exports

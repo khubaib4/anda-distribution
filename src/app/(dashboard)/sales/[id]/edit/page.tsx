@@ -1,5 +1,8 @@
 'use client'
 
+import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+
+import { useCustomerAccountRequest } from '@/hooks/use-customer-account-request'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
@@ -15,7 +18,6 @@ import SaleItemRow, {
 import { SkeletonList } from '@/components/ui/skeleton'
 import {
   todayString,
-  formatPKR,
   formatQty,
   paymentStatusClass,
   paymentStatusLabel,
@@ -63,7 +65,7 @@ export default function EditSalePage() {
   const params = useParams()
   const saleId = params.id as string
 
-  const { customers }  = useCustomers()
+  const { customers }  = useCustomers({ module: 'sales' })
   const { categories } = useEggCategories()
   const { stock }      = useCurrentStock()
 
@@ -94,6 +96,9 @@ export default function EditSalePage() {
   const [partners, setPartners] = useState<PartnerOption[]>([])
 
   const [items, setItems] = useState<SaleItemDraft[]>([newItem()])
+  const { withRequestId, resetRequest } = useCustomerAccountRequest()
+  const [accountEnabled, setAccountEnabled] = useState(false)
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState('')
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
@@ -118,6 +123,8 @@ export default function EditSalePage() {
         return data as Sale
       })
       .then(sale => {
+        setAccountEnabled(Boolean(sale.account_summary?.accounts_enabled))
+        setExpectedUpdatedAt(sale.updated_at)
         setInvoiceNumber(sale.invoice_number)
         setCustomerId(sale.customer_id)
         setSaleDate(sale.sale_date)
@@ -290,7 +297,7 @@ export default function EditSalePage() {
       const res = await tenantFetch(`/api/sales/${saleId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body:    JSON.stringify(accountEnabled ? withRequestId({ ...payload, expected_updated_at: expectedUpdatedAt }) : payload),
       })
 
       const data = await res.json()
@@ -301,11 +308,12 @@ export default function EditSalePage() {
         return
       }
 
-      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/sales')
+      resetRequest()
+      if (mutationScope) cache.invalidatePattern(mutationScope, '/api/')
       if (!canNavigateAfterMutation()) return
       router.push('/sales')
     } catch {
-      setError('Network error — please try again')
+      setError(accountEnabled ? 'Network error — retry with the same details to avoid a duplicate' : 'Network error — please try again')
       setSaving(false)
     }
   }
@@ -378,6 +386,7 @@ export default function EditSalePage() {
             </label>
             <select
               className="select"
+              disabled={accountEnabled}
               value={customerId}
               onChange={e => setCustomerId(e.target.value)}
               required
@@ -490,7 +499,7 @@ export default function EditSalePage() {
             </span>
             <p className="text-xs text-stone-500 mt-2">
               Record customer payments from the customer profile. Invoice
-              status updates automatically using FIFO.
+              {accountEnabled ? 'status follows your saved payment choices.' : 'status updates automatically using FIFO.'}
             </p>
           </div>
 

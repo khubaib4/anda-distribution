@@ -1,5 +1,7 @@
 'use client'
 
+import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+
 import { useState } from 'react'
 import TenantLink from '@/components/tenant-link'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
@@ -8,7 +10,6 @@ import { useSales } from '@/hooks/use-sales'
 import { useCustomers } from '@/hooks/use-customers'
 import SaleDetailModal from '@/components/sales/sale-detail-modal'
 import {
-  formatPKR,
   formatDate,
   formatQty,
   paymentStatusClass,

@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { formatBalanceAsOf } from '@/lib/customer-account-money'
 import {
   formatQty,
   formatDate,
@@ -27,7 +28,7 @@ function itemDiscountsPaisa(items: SaleItem[]): number {
   return items.reduce(
     (sum, item) => sum + (
       item.quantity_trays * item.price_per_tray_paisa
-      - effectiveItemLineTotalPaisa(item)
+      - (item.line_total_paisa ?? effectiveItemLineTotalPaisa(item))
     ),
     0,
   )
@@ -129,7 +130,7 @@ export async function generateInvoicePDF(
       y = 20
     }
 
-    const lineTotal = effectiveItemLineTotalPaisa(item)
+    const lineTotal = sale.account_summary ? item.line_total_paisa ?? effectiveItemLineTotalPaisa(item) : effectiveItemLineTotalPaisa(item)
     const discountNote = itemDiscountNote(item)
 
     doc.text(item.egg_category?.name ?? '—', colCategory, y)
@@ -157,8 +158,8 @@ export async function generateInvoicePDF(
 
   const preDiscountSubtotal = preDiscountSubtotalPaisa(items)
   const itemDiscounts       = itemDiscountsPaisa(items)
-  const afterItemDiscounts  = computeSaleSubtotalPaisa(items)
-  const total               = computeSaleTotalPaisa(sale)
+  const afterItemDiscounts  = sale.account_summary ? sale.subtotal_paisa ?? computeSaleSubtotalPaisa(items) : computeSaleSubtotalPaisa(items)
+  const total               = sale.account_summary ? sale.total_paisa ?? computeSaleTotalPaisa(sale) : computeSaleTotalPaisa(sale)
   const overallDiscount     = afterItemDiscounts - total
   const totalDiscount       = itemDiscounts + overallDiscount
   const { paid_paisa, remaining_paisa } = computeSalePaymentBreakdown({
@@ -173,6 +174,8 @@ export async function generateInvoicePDF(
     items.some(itemHasDiscount)
 
   const labelX = pageWidth - margin - 80
+
+  if (y > 210) { doc.addPage(); y = 25 }
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
@@ -196,14 +199,14 @@ export async function generateInvoicePDF(
   doc.setFont('helvetica', 'normal')
 
   if (sale.payment_status === 'paid' || sale.payment_status === 'partial') {
-    doc.text('Amount Paid', labelX, y)
+    doc.text(sale.account_summary ? 'Paid toward this invoice' : 'Amount Paid', labelX, y)
     doc.text(formatPdfPKR(paid_paisa), colTotal, y, { align: 'right' })
     y += 8
   }
 
   if (sale.payment_status === 'partial' || sale.payment_status === 'unpaid') {
     doc.setFont('helvetica', 'bold')
-    doc.text('Balance Due', labelX, y)
+    doc.text(sale.account_summary ? 'Balance due on this invoice' : 'Balance Due', labelX, y)
     doc.text(formatPdfPKR(remaining_paisa), colTotal, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     y += 8
@@ -212,6 +215,29 @@ export async function generateInvoicePDF(
   doc.text('Payment status', labelX, y)
   doc.text(paymentStatusLabel(sale.payment_status), colTotal, y, { align: 'right' })
   y += 20
+
+  if (sale.account_summary?.accounts_enabled) {
+    if (y > 200) { doc.addPage(); y = 25 }
+    const account = sale.account_summary
+    doc.setFont('helvetica', 'bold')
+    doc.text('Latest customer balance', margin, y)
+    y += 8
+    doc.setFont('helvetica', 'normal')
+    const rows: [string, number][] = [
+      ['Advance used for this invoice', sale.advance_used_paisa ?? 0],
+      ['Other unpaid balances', Math.max(0, account.due_paisa - remaining_paisa)],
+      ['Total balance due', account.due_paisa],
+      ['Available advance', account.advance_paisa],
+    ]
+    for (const [label, amount] of rows) {
+      doc.text(label, margin, y)
+      doc.text(formatPdfPKR(amount), colTotal, y, { align: 'right' })
+      y += 7
+    }
+    doc.setFontSize(8)
+    doc.text(`Balance as of ${formatBalanceAsOf(account.balance_as_of)}`, margin, y)
+    y += 15
+  }
 
   doc.setFont('helvetica', 'italic')
   doc.setFontSize(9)

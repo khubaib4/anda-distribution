@@ -79,6 +79,7 @@ async function loadSale(options = {}) {
   }
 
   const context = {
+    customerAccountsEnabled: () => false,
     createClient: async () => supabase,
     createAdminClient: () => supabase,
     createTrustedHeaderWriter: () => ({ trusted: true }),

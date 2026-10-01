@@ -32,13 +32,14 @@ function load(path) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   const loaded = { exports: {} }
-  runInNewContext(code, { module: loaded, exports: loaded.exports, URL, Date,
-    require: name => imports[name] ?? {}, console }, { filename: path })
+  runInNewContext(code, { module: loaded, exports: loaded.exports, URL, Date, process: { env: {} },
+    require: name => imports[name] ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? {}, console }, { filename: path })
   return loaded.exports
 }
 imports['@/lib/permissions'] = load('src/lib/permissions.ts')
 imports['@/lib/tenant-api'] = load('src/lib/tenant-api.ts')
 imports['@/lib/settings-auth'] = load('src/lib/settings-auth.ts')
+imports['@/lib/customer-accounts-server'] = load('src/lib/customer-accounts-server.ts')
 const tenant = '10000000-0000-4000-8000-000000000001'
 const ctx = (role, flag = role === 'super_admin') => ({
   userId: '50000000-0000-4000-8000-000000000003', tenantId: tenant,

@@ -1,3 +1,4 @@
+import { customerAccountsEnabled, customerAccountResponse } from '@/lib/customer-accounts-server'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
@@ -66,6 +67,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (customerAccountsEnabled()) return customerAccountResponse(request, 'sale', (await params).id)
   const auth = await authorizeApi(request)
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth
@@ -97,6 +99,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (customerAccountsEnabled()) return customerAccountResponse(request, 'edit_sale', (await params).id)
   const auth = await authorizeApi(request, { permission: 'sales' })
   if (auth instanceof NextResponse) return auth
   const { tenantId } = auth

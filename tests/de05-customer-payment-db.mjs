@@ -5,6 +5,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
+import * as exactMoney from '../src/lib/exact-money.ts'
 
 const root = new URL('../', import.meta.url)
 const read = p => readFileSync(new URL(p, root), 'utf8')
@@ -83,7 +84,7 @@ const nodeRequire = createRequire(import.meta.url)
 const ts = nodeRequire('typescript')
 const loaded={exports:{}}
 runInNewContext(ts.transpileModule(read('src/lib/utils.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
-  {module:loaded,exports:loaded.exports,require:n=>n.startsWith('./')?{}:nodeRequire(n)})
+  {module:loaded,exports:loaded.exports,require:n=>n==='./exact-money'?exactMoney:n.startsWith('./')?{}:nodeRequire(n)})
 const lineTotal = loaded.exports.computeDiscountedLineTotalPaisa
 
 try {
