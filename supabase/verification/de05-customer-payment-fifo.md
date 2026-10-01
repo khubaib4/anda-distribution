@@ -191,8 +191,15 @@ No app deployment, positive production receipt through the new path, reset,
 seed, inventory activation or invoice-counter reset occurred. Normal business
 writes may resume. Live use and safe coexistence/closure of competing writers
 remain future work; this deployment does not fix the current multi-request
-payment/sale workflows. Main integration and publication of these deployment
-notes are not part of the database deployment and remain pending.
+payment/sale workflows.
+
+The owner also approved publishing these two deployment notes and integrating
+the reviewed branch into main. Local and remote main were fast-forwarded from
+`4e0cb53` to deployment-note commit
+`9a7e5d8b8983becafaddd0ad0e88f9c9f31176fe`, preserving reviewed source `d8c6a0f`.
+Both remote branches matched at that checkpoint. This final documentation update
+records the completed integration; verify current refs before future work. No
+SQL or app source changed during Git cleanup.
 
 ## Review and later deployment
 
