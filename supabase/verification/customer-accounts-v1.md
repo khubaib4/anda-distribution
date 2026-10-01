@@ -1,6 +1,6 @@
 # Customer previous balance and advance payments
 
-Status: implemented and follow-up independent review passed on 2026-10-01. After the owner's explicit commit/push approval, reviewed feature commit `47f608977a927038d50afeb12bfab1534d19fa1d` was committed and pushed to `codex/customer-accounts-v1` in `khubaib4/anda-distribution`. Main remains unchanged. Ready for release preparation and a disconnected rehearsal, with the existing stock concurrency risk kept explicit. The database migration has not been applied to production, accounts have not been activated, and no live customer records have been changed.
+Status: implemented and follow-up independent review passed on 2026-10-01. After the owner's explicit commit/push approval, reviewed feature commit `47f608977a927038d50afeb12bfab1534d19fa1d` was committed and pushed to `codex/customer-accounts-v1` in `khubaib4/anda-distribution`. The owner then approved merging it into main; local main was fast-forwarded from `45aeed0` to the published branch tip `9f28f3c`, preserving the reviewed source. This documentation checkpoint accompanies the authorized main push; verify current remote refs before later release work. Ready for release preparation and a disconnected rehearsal, with the existing stock concurrency risk kept explicit. The database migration has not been applied to production, accounts have not been activated, and no live customer records have been changed.
 
 ## What customers and staff will see
 
