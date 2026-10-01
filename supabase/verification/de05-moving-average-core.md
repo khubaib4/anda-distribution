@@ -13,8 +13,9 @@ disposable container was removed.
 
 The starting checkout was clean on `codex/de05-security-gate-foundation` at
 `7cd669feb5c67637f14a514d11c03b5c4c28455f`; local `main` and `origin/main`
-pointed to the same commit. Work is now on local branch
-`codex/de05-moving-average-core`; this packet accompanies the approved commit.
+pointed to the same commit. The reviewed source was committed on
+`codex/de05-moving-average-core`; local main now includes it and deployment
+notes `e3bb7e9` through the owner-approved fast-forward described below.
 The owner confirms the security correction is deployed on main at `7cd669f`.
 The final manual super-admin stock API check passed through the owner-reported
 response, completing the previously outstanding privacy/security checkpoint.
@@ -297,7 +298,8 @@ security/catalog metadata still matched the paused baseline. The CLI then
 applied only `20261001093952_de05_moving_average_core.sql`, with `--skip-vault`
 and no seeds or role import. Remote migration history confirms the exact
 version/name. Source remains reviewed commit `8acadc8bf7ee25b0e1b62548eeb31d3b4f34c5cc`
-on the feature branch; main integration is separate and has not been performed.
+on the feature branch. At deployment time main integration had not been
+performed; the subsequently approved Git cleanup is recorded below.
 No application source or Vercel production deployment was changed.
 
 Read-only post-deployment verification confirmed:
@@ -325,3 +327,28 @@ function was invoked, inventory seeded or counter reset. Current sale/purchase
 creation and reporting behavior remain unchanged. Normal writes may resume.
 Future trusted posting wrappers, payment/FIFO integrations, shared revisions,
 reader cutover and activation remain separately scoped work.
+
+
+## Approved Git release integration — 2026-10-01
+
+The owner approved committing/pushing the deployment notes and merging the
+reviewed core branch into main. The three documentation files were committed
+as `e3bb7e976b155b82d460f2ee03da8e5b19200e98` and pushed to the existing feature
+branch. Local main was then fast-forwarded from `7cd669f` to that commit,
+retaining reviewed source `8acadc8` without rewriting commits. This checkpoint
+update accompanies the approved publication of main; verify current local and
+remote refs before starting later work.
+
+The migration and database tests remain identical to the reviewed/deployed
+source; no SQL was rerun and no app source changed during Git cleanup. Existing
+617 core checks, 89/249/162 database regressions, 121 app tests and the 43-check
+production-copy rehearsal remain the relevant validation. Documentation-only
+updates require scope and whitespace checks, not new database posting probes.
+
+The next approved chunk is customer payment/FIFO integration. The existing
+TypeScript implementation already uses sale date, creation time and ID for
+oldest-first allocation. It saves a receipt separately from invoice-status
+updates, leaving a known partial-update risk. The next chunk prepares that
+work for the future atomic database posting path; the approved payment order,
+current app behavior and inactive costing boundary remain unchanged. No new
+customer-payment implementation was included in this release.
