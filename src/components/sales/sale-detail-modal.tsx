@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
-import { X, Download, Pencil } from 'lucide-react'
+import { X, Download, Pencil, Printer } from 'lucide-react'
 import TenantLink from '@/components/tenant-link'
 import {
   formatPKR,
@@ -17,6 +17,7 @@ import {
   effectiveItemPricePaisa,
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
+import SalesReceiptModal from '@/components/sales/sales-receipt-modal'
 import { useTenant } from '@/lib/tenant-client'
 import type { Sale } from '@/types'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
@@ -40,6 +41,7 @@ export default function SaleDetailModal({
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
+  const [showReceipt, setShowReceipt] = useState(false)
 
   useEffect(() => {
     tenantFetch(`/api/sales/${saleId}`)
@@ -66,6 +68,7 @@ export default function SaleDetailModal({
   const grossProfit = totalPaisa - (sale?.cogs_paisa ?? 0)
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-panel max-h-[90vh] flex flex-col"
@@ -307,7 +310,16 @@ export default function SaleDetailModal({
         </div>
 
         {sale && !loading && (
-          <div className="modal-footer flex-shrink-0 border-t border-stone-100">
+          <div className="modal-footer flex-shrink-0 border-t border-stone-100 flex-col sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setShowReceipt(true)}
+              disabled={sale.id !== saleId}
+              className="btn-primary w-full"
+            >
+              <Printer className="w-4 h-4" />
+              Print Receipt
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -322,5 +334,9 @@ export default function SaleDetailModal({
         )}
       </div>
     </div>
+    {showReceipt && sale?.id === saleId && (
+      <SalesReceiptModal sale={sale} onClose={() => setShowReceipt(false)} />
+    )}
+    </>
   )
 }
