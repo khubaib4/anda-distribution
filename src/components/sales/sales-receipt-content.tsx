@@ -1,3 +1,4 @@
+import { itemPetiPricePaisa } from '@/lib/peti-pricing'
 import {
   computeSaleSubtotalPaisa,
   computeSaleTotalPaisa,
@@ -5,6 +6,7 @@ import {
   effectiveItemLineTotalPaisa,
   formatDate,
   formatQty,
+  toPaisa,
   paymentStatusLabel,
 } from '@/lib/utils'
 import { formatPdfPKR } from '@/lib/pdf-money'
@@ -44,12 +46,12 @@ export default function SalesReceiptContent({ sale, businessName }: {
           <div className={styles.item} key={item.id}>
             <strong>{item.egg_category?.name ?? '—'}</strong>
             <p>{formatQty(item.quantity_trays)}</p>
-            <p>Rate: {formatPdfPKR(item.price_per_tray_paisa)} / tray</p>
+            <p>Rate: {formatPdfPKR(item.price_per_peti_paisa != null ? itemPetiPricePaisa(item) : item.price_per_tray_paisa)} / {item.price_per_peti_paisa != null ? 'peti' : 'tray'}</p>
             {item.discount_type === 'percentage' && (
               <p>Item discount: {item.discount_value}%</p>
             )}
             {item.discount_type === 'fixed' && (
-              <p>Item discount: {formatPdfPKR(Math.round(item.discount_value * 100))} / peti</p>
+              <p>Item discount: {formatPdfPKR(toPaisa(item.discount_value))} / peti</p>
             )}
             <div className={styles.amountRow}>
               <span>Line total</span>

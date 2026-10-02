@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 import { useCustomerAccountRequest } from '@/hooks/use-customer-account-request'
 import AllocationFields from './allocation-fields'
-import { moneyInputToPaisa, formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
+import { moneyInputToPaisa, moneyPaisaToInput, formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
 import { todayString } from '@/lib/utils'
 import type { CustomerOpeningBalance, Sale } from '@/types'
 
@@ -23,7 +23,7 @@ export default function CustomerAccountActions({ customerId, opening, advance, d
   const [saving, setSaving] = useState(false)
   function openForm(next: 'opening' | 'advance') {
     setForm(next); setError(null); resetRequest()
-    setAmount(next === 'opening' && opening ? String(opening.amount_paisa / 100) : '')
+    setAmount(next === 'opening' && opening ? moneyPaisaToInput(opening.amount_paisa) : '')
     setType(opening?.balance_type ?? 'due'); setDate(opening?.entry_date ?? todayString()); setNotes(opening?.notes ?? '')
     setMode('old_first');setSaleId('')
   }

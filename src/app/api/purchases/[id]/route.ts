@@ -1,3 +1,4 @@
+import { computePurchaseTotalPaisa, validatePurchaseItems } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
@@ -15,6 +16,7 @@ const PURCHASE_SELECT = `
     egg_category_id,
     quantity_trays,
     price_per_tray_paisa,
+    price_per_peti_paisa,
     egg_category:egg_categories(id, name)
   )
 `
@@ -47,11 +49,7 @@ export async function GET(
 
   const enriched = {
     ...data,
-    total_paisa: (data.items ?? []).reduce(
-      (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    ),
+    total_paisa: computePurchaseTotalPaisa(data.items ?? []),
   }
 
   const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])
@@ -186,21 +184,8 @@ export async function PATCH(
       )
     }
 
-    for (const item of items) {
-      if (
-        !item ||
-        typeof item !== 'object' ||
-        Array.isArray(item) ||
-        typeof item.price_per_tray_paisa !== 'number' ||
-        !Number.isFinite(item.price_per_tray_paisa) ||
-        item.price_per_tray_paisa <= 0
-      ) {
-        return NextResponse.json(
-          { error: 'Each item needs category, quantity, and price' },
-          { status: 400 },
-        )
-      }
-    }
+    const validatedItems = validatePurchaseItems(items)
+    if (!validatedItems.ok) return NextResponse.json({ error: validatedItems.error }, { status: 400 })
 
     const stockAvailability = await validatePurchaseEditStockAvailability({
       supabase,
@@ -335,11 +320,7 @@ export async function PATCH(
 
   const enriched = {
     ...finalData,
-    total_paisa: (finalData.items ?? []).reduce(
-      (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    ),
+    total_paisa: computePurchaseTotalPaisa(finalData.items ?? []),
   }
 
   const [withPartnerName] = await enrichWithPartnerNames(supabase, [enriched])

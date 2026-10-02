@@ -1,5 +1,7 @@
 'use client'
 
+import { itemBaseLineTotalPaisa, itemPetiPricePaisa } from '@/lib/peti-pricing'
+
 import { useState, useEffect } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
 import TenantLink from '@/components/tenant-link'
@@ -129,7 +131,7 @@ export default function PurchaseDetailModal({
                 <p className="section-title">Items</p>
                 <div className="space-y-2">
                   {(purchase.items ?? []).map(item => {
-                    const total = item.quantity_trays * item.price_per_tray_paisa
+                    const total = itemBaseLineTotalPaisa(item)
                     return (
                       <div
                         key={item.id}
@@ -142,7 +144,7 @@ export default function PurchaseDetailModal({
                           </p>
                           <p className="text-xs text-stone-500">
                             {formatQty(item.quantity_trays)} ×{' '}
-                            {formatPKR(item.price_per_tray_paisa)}/tray
+                            {formatPKR(itemPetiPricePaisa(item))}/peti
                           </p>
                         </div>
                         <p className="amount text-sm text-stone-900">

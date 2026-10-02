@@ -65,6 +65,7 @@ export interface PurchaseItem {
   egg_category_id: string
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   total_paisa: number
   created_at: string
   egg_category?: EggCategory
@@ -149,6 +150,7 @@ export interface SaleItem {
   egg_category_id: string
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type: 'percentage' | 'fixed' | null
   discount_value: number
   discounted_price_paisa: number

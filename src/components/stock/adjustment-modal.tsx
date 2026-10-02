@@ -8,6 +8,7 @@ import {
   todayString,
   formatEggs,
   formatPKRDecimal,
+  toPaisa,
 } from '@/lib/utils'
 import { isPositiveWholeEggCount, wholeEggsFromTrays } from '@/lib/quantity'
 
@@ -53,10 +54,9 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
   }, [parsedQty, quantityUnit])
 
   const pricePerTrayText = useMemo(() => {
-    const eggPrice = parseFloat(pricePerEgg)
-    if (!eggPrice || eggPrice <= 0) return null
-    const trayPrice = eggPrice * 30
-    return `= ${formatPKRDecimal(Math.round(trayPrice * 100))} per tray (30 eggs)`
+    const eggPricePaisa = toPaisa(pricePerEgg)
+    if (!Number.isSafeInteger(eggPricePaisa) || eggPricePaisa <= 0) return null
+    return `= ${formatPKRDecimal(eggPricePaisa * 30)} per tray (30 eggs)`
   }, [pricePerEgg])
 
   const finalReason =
@@ -105,9 +105,9 @@ export default function AdjustmentModal({ onClose, onSaved }: Props) {
       (movementType === 'adjustment_in' || movementType === 'opening_stock') &&
       pricePerEgg
     ) {
-      const eggPrice = parseFloat(pricePerEgg)
-      if (eggPrice > 0) {
-        payload.price_per_egg_paisa = Math.round(eggPrice * 100)
+      const eggPricePaisa = toPaisa(pricePerEgg)
+      if (Number.isSafeInteger(eggPricePaisa) && eggPricePaisa > 0) {
+        payload.price_per_egg_paisa = eggPricePaisa
       }
     }
 

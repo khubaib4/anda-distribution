@@ -18,6 +18,12 @@ export function moneyInputToPaisa(value: string): number | null {
   return result <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(result) : null
 }
 
+export function moneyPaisaToInput(paisa: number): string {
+  if (!Number.isSafeInteger(paisa)) return ''
+  const absolute = BigInt(Math.abs(paisa))
+  return (paisa < 0 ? '-' : '') + `${absolute / BigInt(100)}.${String(absolute % BigInt(100)).padStart(2, '0')}`
+}
+
 export function previewCustomerBalance(account: Pick<CustomerAccountSummary, 'due_paisa' | 'advance_paisa'>,
   saleTotal: number, received: number, advanceUsed: number, mode: 'old_first' | 'sale_only') {
   const eligible = mode === 'sale_only' ? saleTotal : account.due_paisa + saleTotal

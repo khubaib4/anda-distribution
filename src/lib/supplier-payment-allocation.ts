@@ -1,3 +1,4 @@
+import { itemBaseLineTotalPaisa } from '@/lib/peti-pricing'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
 
@@ -19,6 +20,7 @@ type PurchaseItemRow = {
   purchase_id: string
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
 }
 
 export type SupplierPurchaseAllocationSummary = {
@@ -119,7 +121,7 @@ export async function recalculateSupplierPurchaseAllocations({
     while (true) {
       const { data, error } = await supabase
         .from('purchase_items')
-        .select('purchase_id, quantity_trays, price_per_tray_paisa')
+        .select('purchase_id, quantity_trays, price_per_tray_paisa, price_per_peti_paisa')
         .eq('tenant_id', tenantId)
         .in('purchase_id', purchaseIds)
         .order('id', { ascending: true })
@@ -134,7 +136,7 @@ export async function recalculateSupplierPurchaseAllocations({
           throw new Error('Invalid purchase item quantity in supplier allocation')
         }
         const lineTotal = safePaisa(
-          item.quantity_trays * safePaisa(item.price_per_tray_paisa, 'purchase item price'),
+          itemBaseLineTotalPaisa({ ...item, price_per_tray_paisa: safePaisa(item.price_per_tray_paisa, 'purchase item price') }),
           'purchase item total',
         )
         const currentTotal = totals.get(item.purchase_id)

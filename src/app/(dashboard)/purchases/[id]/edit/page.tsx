@@ -1,5 +1,7 @@
 'use client'
 
+import { itemBaseLineTotalPaisa } from '@/lib/peti-pricing'
+
 import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
@@ -23,6 +25,7 @@ function newItem(): PurchaseItemDraft {
     quantity_peti:        0,
     quantity_tray:        0,
     price_per_tray_paisa: 0,
+    price_per_peti_paisa: 0,
   }
 }
 
@@ -33,6 +36,7 @@ function purchaseToItems(purchase: Purchase): PurchaseItemDraft[] {
     quantity_peti:        Math.floor(item.quantity_trays / 12),
     quantity_tray:        item.quantity_trays % 12,
     price_per_tray_paisa: item.price_per_tray_paisa,
+    price_per_peti_paisa: item.price_per_peti_paisa ?? null,
   }))
 }
 
@@ -118,8 +122,7 @@ export default function EditPurchasePage() {
   const handleAddItem = () => setItems(prev => [...prev, newItem()])
 
   const grandTotalPaisa = items.reduce((sum, item) => {
-    const trays = item.quantity_peti * 12 + item.quantity_tray
-    return sum + trays * item.price_per_tray_paisa
+    return sum + itemBaseLineTotalPaisa(item)
   }, 0)
 
   const totalTrays = items.reduce(
@@ -161,6 +164,7 @@ export default function EditPurchasePage() {
           egg_category_id:      item.egg_category_id,
           quantity_trays:       item.quantity_peti * 12 + item.quantity_tray,
           price_per_tray_paisa: item.price_per_tray_paisa,
+          price_per_peti_paisa: item.price_per_peti_paisa,
         })),
       }
 

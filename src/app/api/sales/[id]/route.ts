@@ -23,6 +23,7 @@ const SALE_SELECT = `
     egg_category_id,
     quantity_trays,
     price_per_tray_paisa,
+    price_per_peti_paisa,
     discount_type,
     discount_value,
     discounted_price_paisa,
@@ -37,6 +38,7 @@ function enrichSale<T extends {
   items?: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
+    price_per_peti_paisa?: number | null
     discounted_price_paisa?: number
     cost_per_tray_paisa: number
   }>
@@ -171,6 +173,7 @@ export async function PATCH(
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          price_per_peti_paisa,
           discount_type,
           discount_value,
           discounted_price_paisa
@@ -388,6 +391,7 @@ export async function PATCH(
       egg_category_id:        item.egg_category_id,
       quantity_trays:         item.quantity_trays,
       price_per_tray_paisa:   item.price_per_tray_paisa,
+    ...(item.price_per_peti_paisa == null ? {} : { price_per_peti_paisa: item.price_per_peti_paisa }),
       discount_type:          item.discount_type,
       discount_value:         item.discount_value,
       discounted_price_paisa: item.discounted_price_paisa,

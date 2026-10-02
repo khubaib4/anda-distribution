@@ -2,6 +2,8 @@ import { clsx, type ClassValue } from 'clsx'
 import { businessDateString } from './business-date'
 import { wholeEggsFromWholeTrays } from './quantity'
 import { decimalRatio, roundMoneyRatio } from './exact-money'
+import { formatAccountPKR } from './customer-account-money'
+import { baseLineTotalPaisa, itemBaseLineTotalPaisa, trayPriceFromPetiPaisa } from './peti-pricing'
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
@@ -9,26 +11,13 @@ export function cn(...inputs: ClassValue[]) {
 
 // Format PKR from paisa — Pakistani number format (lakh system)
 export function formatPKR(paisa: number): string {
-  const rupees = paisa / 100
-  return (
-    '₨\u00A0' +
-    rupees.toLocaleString('en-IN', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })
-  )
+  return formatAccountPKR(paisa)
 }
 
 // Format PKR with decimals (for per-unit prices)
 export function formatPKRDecimal(paisa: number): string {
-  const rupees = paisa / 100
-  return (
-    '₨\u00A0' +
-    rupees.toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  )
+  const formatted = formatAccountPKR(paisa)
+  return Number.isInteger(paisa) && paisa % 100 === 0 ? formatted + '.00' : formatted
 }
 
 // Format trays as peti + tray
@@ -94,7 +83,16 @@ export function toTrays(peti: number, tray: number): number {
 
 // Convert rupees (user input) to paisa (storage)
 export function toPaisa(rupees: number | string): number {
-  return Math.round(Number(rupees) * 100)
+  const amount = Number(rupees)
+  if (!Number.isFinite(amount)) return NaN
+  const input = typeof rupees === 'string' ? rupees.trim() : null
+  const value = decimalRatio(input && /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(input) ? input : amount)
+  const numerator = value.numerator * BigInt(100)
+  const absolute = numerator < BigInt(0) ? -numerator : numerator
+  const rounded = numerator < BigInt(0)
+    ? -(absolute / value.denominator + (absolute % value.denominator * BigInt(2) > value.denominator ? BigInt(1) : BigInt(0)))
+    : roundMoneyRatio(numerator, value.denominator)
+  return rounded >= -BigInt(Number.MAX_SAFE_INTEGER) && rounded <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(rounded) : NaN
 }
 
 // Convert paisa to rupees (for input field default values)
@@ -190,6 +188,7 @@ export type ValidatedSaleItem = {
   egg_category_id: string
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type: DiscountType | null
   discount_value: number
   discounted_price_paisa: number
@@ -210,7 +209,10 @@ export function validateSaleItems(items: unknown):
         typeof item.price_per_tray_paisa !== 'number' ||
         !Number.isSafeInteger(item.price_per_tray_paisa) ||
         item.price_per_tray_paisa <= 0 ||
-        !Number.isSafeInteger(item.quantity_trays * item.price_per_tray_paisa)) {
+        (item.price_per_peti_paisa != null &&
+          (!Number.isSafeInteger(item.price_per_peti_paisa) || item.price_per_peti_paisa <= 0 ||
+           item.price_per_tray_paisa !== trayPriceFromPetiPaisa(item.price_per_peti_paisa))) ||
+        !Number.isSafeInteger(itemBaseLineTotalPaisa(item))) {
       return { ok: false, error: 'Each item needs a category, a positive whole-tray quantity, and a positive safe-integer price in paisa' }
     }
 
@@ -231,12 +233,14 @@ export function validateSaleItems(items: unknown):
       item.price_per_tray_paisa,
       discountType,
       discountValue,
+      item.price_per_peti_paisa,
     )
     const lineTotal = computeDiscountedLineTotalPaisa(
       item.quantity_trays,
       item.price_per_tray_paisa,
       discountType,
       discountValue,
+      item.price_per_peti_paisa,
     )
     if (!Number.isSafeInteger(discountedPrice) ||
         !Number.isSafeInteger(lineTotal)) {
@@ -247,6 +251,7 @@ export function validateSaleItems(items: unknown):
       egg_category_id: item.egg_category_id,
       quantity_trays: item.quantity_trays,
       price_per_tray_paisa: item.price_per_tray_paisa,
+      ...(item.price_per_peti_paisa == null ? {} : { price_per_peti_paisa: item.price_per_peti_paisa }),
       discount_type: discountType,
       discount_value: discountValue,
       discounted_price_paisa: discountedPrice,
@@ -256,11 +261,30 @@ export function validateSaleItems(items: unknown):
   return { ok: true, items: validated }
 }
 
+export function validatePurchaseItems(items: unknown) {
+  const result = validateSaleItems(Array.isArray(items) ? items.map(item =>
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? { ...item, discount_type: null } : item,
+  ) : items)
+  if (!result.ok) return result
+  const validated = result.items.map(({ egg_category_id, quantity_trays, price_per_tray_paisa, price_per_peti_paisa }) => ({
+    egg_category_id, quantity_trays, price_per_tray_paisa,
+    ...(price_per_peti_paisa == null ? {} : { price_per_peti_paisa }),
+  }))
+  if (!Number.isSafeInteger(computePurchaseTotalPaisa(validated))) return { ok: false as const, error: 'Purchase total is too large' }
+  return { ok: true as const, items: validated }
+}
+
+export function computePurchaseTotalPaisa(items: Array<{ quantity_trays: number; price_per_tray_paisa: number; price_per_peti_paisa?: number | null }>): number {
+  return items.reduce((sum, item) => sum + itemBaseLineTotalPaisa(item), 0)
+}
+
 export function computeDiscountedPricePaisa(
   quantityTrays: number,
   pricePerTrayPaisa: number,
   discountType: DiscountType | null,
   discountValue: number,
+  pricePerPetiPaisa?: number | null,
 ): number {
   if (
     !discountType ||
@@ -277,6 +301,7 @@ export function computeDiscountedPricePaisa(
     pricePerTrayPaisa,
     discountType,
     discountValue,
+    pricePerPetiPaisa,
   )
   return Number.isSafeInteger(total) && Number.isSafeInteger(quantityTrays)
     ? Number(roundMoneyRatio(BigInt(total), BigInt(quantityTrays)))
@@ -288,8 +313,9 @@ export function computeDiscountedLineTotalPaisa(
   pricePerTrayPaisa: number,
   discountType: DiscountType | null,
   discountValue: number,
+  pricePerPetiPaisa?: number | null,
 ): number {
-  const originalLinePaisa = quantityTrays * pricePerTrayPaisa
+  const originalLinePaisa = baseLineTotalPaisa(quantityTrays, pricePerTrayPaisa, pricePerPetiPaisa)
   if (!discountType || !Number.isFinite(discountValue) || discountValue <= 0 ||
       (discountType === 'percentage' && discountValue > 100)) {
     return originalLinePaisa
@@ -297,7 +323,8 @@ export function computeDiscountedLineTotalPaisa(
 
   if (!Number.isSafeInteger(quantityTrays) || !Number.isSafeInteger(pricePerTrayPaisa)
       || quantityTrays <= 0 || pricePerTrayPaisa <= 0) return originalLinePaisa
-  const original = BigInt(quantityTrays) * BigInt(pricePerTrayPaisa)
+  if (!Number.isSafeInteger(originalLinePaisa)) return NaN
+  const original = BigInt(originalLinePaisa)
   const value = decimalRatio(discountValue)
   const discount = discountType === 'percentage'
     ? roundMoneyRatio(original * value.numerator, BigInt(100) * value.denominator)
@@ -310,20 +337,23 @@ export function computeLineDiscountSavingPaisa(
   pricePerTrayPaisa: number,
   discountType: DiscountType | null,
   discountValue: number,
+  pricePerPetiPaisa?: number | null,
 ): number {
   if (!discountType || discountValue <= 0 || quantityTrays <= 0) return 0
-  const lineTotal = quantityTrays * pricePerTrayPaisa
+  const lineTotal = baseLineTotalPaisa(quantityTrays, pricePerTrayPaisa, pricePerPetiPaisa)
   const discountedLineTotal = computeDiscountedLineTotalPaisa(
     quantityTrays,
     pricePerTrayPaisa,
     discountType,
     discountValue,
+    pricePerPetiPaisa,
   )
   return lineTotal - discountedLineTotal
 }
 
 export function effectiveItemPricePaisa(item: {
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type?: DiscountType | null
   discount_value?: number | null
   quantity_trays?: number
@@ -342,6 +372,7 @@ export function effectiveItemPricePaisa(item: {
         item.price_per_tray_paisa,
         item.discount_type,
         item.discount_value,
+        item.price_per_peti_paisa,
       )
     }
     return item.price_per_tray_paisa
@@ -360,21 +391,24 @@ export function effectiveItemLineTotalPaisa(item: {
   quantity_peti?: number
   quantity_tray?: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type?: DiscountType | null
   discount_value?: number | null
   discounted_price_paisa?: number | null
 }): number {
   const trays = item.quantity_trays
     ?? (item.quantity_peti ?? 0) * 12 + (item.quantity_tray ?? 0)
-  if (item.discount_type === null) return trays * item.price_per_tray_paisa
+  if (item.discount_type === null) return itemBaseLineTotalPaisa(item)
   if (item.discount_type === 'percentage' || item.discount_type === 'fixed') {
     return computeDiscountedLineTotalPaisa(
       trays,
       item.price_per_tray_paisa,
       item.discount_type,
       item.discount_value ?? 0,
+      item.price_per_peti_paisa,
     )
   }
+  if (item.price_per_peti_paisa != null) return itemBaseLineTotalPaisa(item)
   // Older callers without discount metadata retain their stored-price fallback.
   return trays * effectiveItemPricePaisa(item)
 }
@@ -383,6 +417,7 @@ export function computeSaleSubtotalPaisa(
   items: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
+    price_per_peti_paisa?: number | null
     discount_type?: DiscountType | null
     discount_value?: number | null
     discounted_price_paisa?: number | null
@@ -400,6 +435,7 @@ export function computeSaleTotalPaisa(sale: {
   items?: Array<{
     quantity_trays: number
     price_per_tray_paisa: number
+    price_per_peti_paisa?: number | null
     discount_type?: DiscountType | null
     discount_value?: number | null
     discounted_price_paisa?: number | null

@@ -1,3 +1,4 @@
+import { computePurchaseTotalPaisa, validatePurchaseItems } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTrustedHeaderWriter } from '@/lib/supabase/trusted-header-writer'
@@ -5,7 +6,6 @@ import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 import { enrichWithPartnerNames } from '@/lib/expense-partners'
 import { recalculateSupplierPurchaseAllocations } from '@/lib/supplier-payment-allocation'
-import { wholeEggsFromWholeTrays } from '@/lib/quantity'
 
 export async function GET(request: Request) {
   const auth = await authorizeApi(request)
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
         id,
         quantity_trays,
         price_per_tray_paisa,
+        price_per_peti_paisa,
         egg_category:egg_categories(id, name)
       )
     `)
@@ -49,11 +50,7 @@ export async function GET(request: Request) {
 
   const enriched = (data ?? []).map(p => ({
     ...p,
-    total_paisa: (p.items ?? []).reduce(
-      (sum: number, item: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        sum + item.quantity_trays * item.price_per_tray_paisa,
-      0
-    ),
+    total_paisa: computePurchaseTotalPaisa(p.items ?? []),
   }))
 
   const withPartnerNames = await enrichWithPartnerNames(supabase, enriched)
@@ -122,22 +119,9 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
-  for (const item of items) {
-    if (
-      !item ||
-      typeof item !== 'object' ||
-      Array.isArray(item) ||
-      typeof item.egg_category_id !== 'string' ||
-      !item.egg_category_id ||
-      wholeEggsFromWholeTrays(item.quantity_trays) === null ||
-      !item.price_per_tray_paisa
-    ) {
-      return NextResponse.json(
-        { error: 'Each item needs category, a positive whole number of trays, and price' },
-        { status: 400 }
-      )
-    }
-  }
+  const validatedItems = validatePurchaseItems(items)
+  if (!validatedItems.ok) return NextResponse.json({ error: validatedItems.error }, { status: 400 })
+  const purchaseItems = validatedItems.items
 
   if (supplier_id) {
     if (typeof supplier_id !== 'string') {
@@ -199,16 +183,18 @@ export async function POST(request: Request) {
     )
   }
 
-  const itemRows = items.map((item: {
+  const itemRows = purchaseItems.map((item: {
     egg_category_id:      string
     quantity_trays:       number
     price_per_tray_paisa: number
+    price_per_peti_paisa?: number | null
   }) => ({
     tenant_id:            writeTenantId,
     purchase_id:          purchase.id,
     egg_category_id:      item.egg_category_id,
     quantity_trays:       item.quantity_trays,
     price_per_tray_paisa: item.price_per_tray_paisa,
+    ...(item.price_per_peti_paisa == null ? {} : { price_per_peti_paisa: item.price_per_peti_paisa }),
   }))
 
   const { error: itemsError } = await supabase

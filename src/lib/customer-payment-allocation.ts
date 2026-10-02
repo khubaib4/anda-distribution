@@ -11,6 +11,7 @@ type PaymentRow = {
 type SaleItemRow = {
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type: 'percentage' | 'fixed' | null
   discount_value: number | null
   discounted_price_paisa?: number | null
@@ -86,6 +87,7 @@ export async function recalculateCustomerSaleAllocations({
       items:sale_items(
         quantity_trays,
         price_per_tray_paisa,
+        price_per_peti_paisa,
         discount_type,
         discount_value,
         discounted_price_paisa
@@ -105,6 +107,7 @@ export async function recalculateCustomerSaleAllocations({
     const items = (sale.items ?? []).map((item) => ({
       quantity_trays: item.quantity_trays,
       price_per_tray_paisa: item.price_per_tray_paisa,
+      price_per_peti_paisa: item.price_per_peti_paisa,
       discount_type: item.discount_type,
       discount_value: item.discount_value,
       discounted_price_paisa: item.discounted_price_paisa ?? undefined,

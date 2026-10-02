@@ -1,3 +1,4 @@
+import { typescriptLoader } from './helpers/load-typescript.mjs'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -39,13 +40,7 @@ function loadModule(path, imports = {}) {
 }
 
 const quantity = loadModule('src/lib/quantity.ts')
-const businessDate = loadModule('src/lib/business-date.ts')
-const utils = loadModule('src/lib/utils.ts', {
-  clsx: nodeRequire('clsx'),
-  './business-date': businessDate,
-  './quantity': quantity,
-  './exact-money': loadModule('src/lib/exact-money.ts'),
-})
+const utils = typescriptLoader()('src/lib/utils.ts')
 const stockAvailability = loadModule('src/lib/stock-availability.ts', {
   './quantity': quantity,
 })

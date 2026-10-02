@@ -1,12 +1,10 @@
+import { computePurchaseTotalPaisa } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq, requireWriteTenantId } from '@/lib/tenant-api'
 
-function purchaseTotalPaisa(items: { quantity_trays: number; price_per_tray_paisa: number }[]) {
-  return (items ?? []).reduce(
-    (sum, item) => sum + item.quantity_trays * item.price_per_tray_paisa,
-    0,
-  )
+function purchaseTotalPaisa(items: { quantity_trays: number; price_per_tray_paisa: number; price_per_peti_paisa?: number | null }[]) {
+  return computePurchaseTotalPaisa(items)
 }
 
 export async function GET(request: Request) {
@@ -32,7 +30,7 @@ export async function GET(request: Request) {
     .from('purchases')
     .select(`
       supplier_id,
-      items:purchase_items(quantity_trays, price_per_tray_paisa)
+      items:purchase_items(quantity_trays, price_per_tray_paisa, price_per_peti_paisa)
     `)
   purchasesQuery = tenantEq(purchasesQuery, tenantId)
 

@@ -1,3 +1,4 @@
+import { typescriptLoader } from './helpers/load-typescript.mjs'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -138,6 +139,7 @@ function makeHarness() {
     '@/lib/permissions': { hasModulePermission: permissions.hasModulePermission },
   })
   const common = {
+    '@/lib/utils': typescriptLoader()('src/lib/utils.ts'),
     '@/lib/supabase/server': { createClient: async () => supabase },
     '@/lib/supabase/admin': { createAdminClient: () => adminSupabase },
     '@/lib/supabase/trusted-header-writer': { createTrustedHeaderWriter: () => ({}) },

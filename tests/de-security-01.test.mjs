@@ -1,3 +1,4 @@
+import { typescriptLoader } from './helpers/load-typescript.mjs'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -22,7 +23,7 @@ function load(path, imports = {}, globals = {}) {
   const loadedModule = { exports: {} }
   runInNewContext(code, {
     module: loadedModule, exports: loadedModule.exports,
-    require: name => imports[name] ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? {},
+    require: name => imports[name] ?? (name === '@/lib/peti-pricing' ? typescriptLoader()('src/lib/peti-pricing.ts') : undefined) ?? (name === '@/lib/customer-accounts-server' ? { customerAccountsEnabled: () => false } : undefined) ?? {},
     Date, URL, console: { error() {} }, ...globals,
   }, { filename: path })
   return loadedModule.exports

@@ -1,5 +1,7 @@
 'use client'
 
+import { itemPetiPricePaisa } from '@/lib/peti-pricing'
+
 import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
 
 import { useState, useEffect } from 'react'
@@ -15,7 +17,6 @@ import {
   computeSaleTotalPaisa,
   computeSalePaymentBreakdown,
   effectiveItemLineTotalPaisa,
-  effectiveItemPricePaisa,
 } from '@/lib/utils'
 import { generateInvoicePDF } from '@/components/sales/invoice-pdf'
 import SalesReceiptModal from '@/components/sales/sales-receipt-modal'
@@ -171,12 +172,9 @@ export default function SaleDetailModal({
                 <p className="section-title">Items</p>
                 <div className="space-y-2">
                   {(sale.items ?? []).map(item => {
-                    const effectivePrice = effectiveItemPricePaisa(item)
                     const total = sale.account_summary ? item.line_total_paisa ?? effectiveItemLineTotalPaisa(item) : effectiveItemLineTotalPaisa(item)
                     const hasDiscount =
                       item.discount_type === 'percentage' || item.discount_type === 'fixed'
-                    const hasSaving = total < item.quantity_trays * item.price_per_tray_paisa
-                    const roundedUnitPrice = effectivePrice * item.quantity_trays !== total
                     return (
                       <div
                         key={item.id}
@@ -198,22 +196,7 @@ export default function SaleDetailModal({
                           </div>
                           <p className="text-xs text-stone-500">
                             {formatQty(item.quantity_trays)} ×{' '}
-                            {hasDiscount ? (
-                              <>
-                                {hasSaving && (
-                                  <>
-                                    <span className="line-through text-stone-400">
-                                      {formatPKR(item.price_per_tray_paisa)}
-                                    </span>
-                                    {' '}
-                                  </>
-                                )}
-                                {roundedUnitPrice && '≈ '}
-                                {formatPKR(effectivePrice)}/tray
-                              </>
-                            ) : (
-                              <>{formatPKR(item.price_per_tray_paisa)}/tray</>
-                            )}
+                            {formatPKR(itemPetiPricePaisa(item))}/peti
                           </p>
                         </div>
                         <p className="amount text-sm text-stone-900">

@@ -112,6 +112,7 @@ try {
   eq(`SELECT last_number FROM public.invoice_counters WHERE tenant_id='${a}' AND counter_type='purchase'`,23)
   eq('SELECT count(*) FROM public.inventory_operations',0)
   eq('SELECT customer_accounts.is_active()','t')
+  sql(migration('_exact_peti_pricing.sql'))
   for(const role of ['anon','authenticated','service_role']) {
     fail(`SET ROLE ${role};SELECT inventory_stock_guard.signed_eggs('sale_out',30,NULL)`,'42501')
     eq(`SELECT has_schema_privilege('${role}','inventory_stock_guard','USAGE,CREATE')`,'f')

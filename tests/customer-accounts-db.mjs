@@ -81,6 +81,7 @@ try {
   sql(`UPDATE public.sales SET amount_paid_paisa=100 WHERE id='${legacySale}'; SELECT customer_accounts.activate()`)
   // Exercise the complete active-account flow with all stock writers protected.
   sql(migration('_shared_stock_write_protection.sql'))
+  sql(migration('_exact_peti_pricing.sql'))
   balances(legacy,0,50)
   eq(`SELECT last_number FROM public.invoice_counters WHERE tenant_id='${a}' AND counter_type='sale'`,17)
   eq('SELECT count(*) FROM public.inventory_operations',0)

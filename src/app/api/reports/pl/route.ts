@@ -1,3 +1,4 @@
+import { computePurchaseTotalPaisa } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
@@ -7,6 +8,7 @@ import { businessDateString } from '@/lib/business-date'
 type SaleItemRow = {
   quantity_trays: number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type: 'percentage' | 'fixed' | null
   discount_value: number | null
   discounted_price_paisa?: number
@@ -47,6 +49,7 @@ export async function GET(request: Request) {
         items:sale_items(
           quantity_trays,
           price_per_tray_paisa,
+          price_per_peti_paisa,
           discount_type,
           discount_value,
           discounted_price_paisa,
@@ -193,7 +196,7 @@ export async function GET(request: Request) {
   const { data: purchasesData } = await tenantEq(
     supabase
       .from('purchases')
-      .select(`items:purchase_items(quantity_trays, price_per_tray_paisa)`)
+      .select(`items:purchase_items(quantity_trays, price_per_tray_paisa, price_per_peti_paisa)`)
       .gte('purchase_date', from)
       .lte('purchase_date', to),
     tenantId,
@@ -201,8 +204,8 @@ export async function GET(request: Request) {
 
   const totalPurchases = (purchasesData ?? []).reduce((sum, p) => {
     return sum + (p.items ?? []).reduce(
-      (s: number, i: { quantity_trays: number; price_per_tray_paisa: number }) =>
-        s + i.quantity_trays * i.price_per_tray_paisa, 0
+      (s: number, i: { quantity_trays: number; price_per_tray_paisa: number; price_per_peti_paisa?: number | null }) =>
+        s + computePurchaseTotalPaisa([i]), 0
     )
   }, 0)
 

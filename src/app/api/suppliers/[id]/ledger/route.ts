@@ -1,3 +1,4 @@
+import { computePurchaseTotalPaisa } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { authorizeApi, tenantEq } from '@/lib/tenant-api'
@@ -22,7 +23,8 @@ export async function GET(
       payment_status,
       items:purchase_items(
         quantity_trays,
-        price_per_tray_paisa
+        price_per_tray_paisa,
+        price_per_peti_paisa
       )
     `)
     .eq('supplier_id', id)
@@ -75,7 +77,8 @@ export async function GET(
       (sum: number, item: {
         quantity_trays: number
         price_per_tray_paisa: number
-      }) => sum + item.quantity_trays * item.price_per_tray_paisa,
+        price_per_peti_paisa?: number | null
+      }) => sum + computePurchaseTotalPaisa([item]),
       0
     )
     entries.push({

@@ -6,8 +6,9 @@ import {
   computeDiscountedPricePaisa,
   computeLineDiscountSavingPaisa,
   effectiveItemLineTotalPaisa,
-  petiPriceStringFromTrayPaisa,
+  formatPKR,
 } from '@/lib/utils'
+import { itemPetiPriceInput, petiPriceInputPatch, itemBaseLineTotalPaisa } from '@/lib/peti-pricing'
 import type { EggCategory } from '@/types'
 
 export interface SaleItemDraft {
@@ -16,6 +17,7 @@ export interface SaleItemDraft {
   quantity_peti:        number
   quantity_tray:        number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
   discount_type:        'percentage' | 'fixed' | null
   discount_value:       number
   discounted_price_paisa: number
@@ -30,10 +32,7 @@ interface Props {
 }
 
 function formatRupees(paisa: number): string {
-  return (Math.round(paisa) / 100).toLocaleString('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })
+  return formatPKR(paisa).replace('₨\u00a0', '')
 }
 
 export default function SaleItemRow({
@@ -45,24 +44,25 @@ export default function SaleItemRow({
 }: Props) {
   const discountOn = item.discount_type === 'percentage' || item.discount_type === 'fixed'
   const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
-    petiPriceStringFromTrayPaisa(item.price_per_tray_paisa),
+    itemPetiPriceInput(item),
   )
 
   const totalTrays = item.quantity_peti * 12 + item.quantity_tray
-  const originalLineTotal = totalTrays * item.price_per_tray_paisa
+  const originalLineTotal = itemBaseLineTotalPaisa(item)
   const discountedLineTotal = effectiveItemLineTotalPaisa(item)
   const lineSavingPaisa = computeLineDiscountSavingPaisa(
     totalTrays,
     item.price_per_tray_paisa,
     item.discount_type,
     item.discount_value,
+    item.price_per_peti_paisa,
   )
 
   function applyDiscount(
     type: 'percentage' | 'fixed' | null,
     value: number,
     overrides?: Partial<
-      Pick<SaleItemDraft, 'quantity_peti' | 'quantity_tray' | 'price_per_tray_paisa'>
+      Pick<SaleItemDraft, 'quantity_peti' | 'quantity_tray' | 'price_per_tray_paisa' | 'price_per_peti_paisa'>
     >,
   ) {
     const peti = overrides?.quantity_peti ?? item.quantity_peti
@@ -70,7 +70,7 @@ export default function SaleItemRow({
     const price = overrides?.price_per_tray_paisa ?? item.price_per_tray_paisa
     const trays = peti * 12 + tray
     const discounted = type
-      ? computeDiscountedPricePaisa(trays, price, type, value)
+      ? computeDiscountedPricePaisa(trays, price, type, value, overrides?.price_per_peti_paisa ?? item.price_per_peti_paisa)
       : 0
 
     onChange(item.id, {
@@ -91,15 +91,13 @@ export default function SaleItemRow({
 
   function savingMessage(): string | null {
     if (lineSavingPaisa <= 0) return null
-    const totalDiscount = lineSavingPaisa / 100
-
     if (item.discount_type === 'fixed') {
       const perPeti = parseFloat(String(item.discount_value))
       if (perPeti <= 0) return null
-      return `Saving ₨${perPeti.toLocaleString('en-IN')} per peti (₨${totalDiscount.toLocaleString('en-IN', { maximumFractionDigits: 2 })} total)`
+      return `Saving ₨${perPeti.toLocaleString('en-IN', { maximumFractionDigits: 20 })} per peti (₨${formatRupees(lineSavingPaisa)} total)`
     }
     if (item.discount_type === 'percentage') {
-      return `Saving ${item.discount_value}% (₨${totalDiscount.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total)`
+      return `Saving ${item.discount_value}% (₨${formatRupees(lineSavingPaisa)} total)`
     }
     return null
   }
@@ -194,21 +192,19 @@ export default function SaleItemRow({
           onChange={e => {
             const input = e.target.value
             setPricePerPetiInput(input)
-            const price_per_tray_paisa = Math.round(
-              (parseFloat(input || '0') * 100) / 12,
-            )
+            const prices = petiPriceInputPatch(input)
             if (discountOn && item.discount_type) {
               applyDiscount(item.discount_type, item.discount_value, {
-                price_per_tray_paisa,
+                ...prices,
               })
             } else {
-              onChange(item.id, { price_per_tray_paisa })
+              onChange(item.id, prices)
             }
           }}
         />
         {item.price_per_tray_paisa > 0 && (
           <p className="text-xs text-stone-500 mt-1">
-            = ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
+            ≈ ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
           </p>
         )}
       </div>

@@ -1,5 +1,7 @@
 'use client'
 
+import { moneyInputToPaisa } from '@/lib/customer-account-money'
+
 import { useState, useEffect, use } from 'react'
 import TenantLink from '@/components/tenant-link'
 import {
@@ -99,8 +101,8 @@ export default function SupplierDetailPage({
     e.preventDefault()
     setPayError(null)
 
-    const amount = parseFloat(payAmount)
-    if (!payAmount || isNaN(amount) || amount <= 0) {
+    const amount = moneyInputToPaisa(payAmount)
+    if (!payAmount || amount === null || amount <= 0) {
       setPayError('Enter a valid amount')
       return
     }
@@ -112,7 +114,7 @@ export default function SupplierDetailPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supplier_id:    id,
-          amount_paisa:   Math.round(amount * 100),
+          amount_paisa:   amount,
           payment_date:   payDate,
           payment_method: payMethod,
           reference:      payReference || null,

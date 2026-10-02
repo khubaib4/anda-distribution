@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useExpenseCategories } from '@/hooks/use-expenses'
 import { todayString, toPaisa, formatPKR } from '@/lib/utils'
+import { moneyPaisaToInput } from '@/lib/customer-account-money'
 import type { BankAccountBalance, Expense, PartnerOption } from '@/types'
 import { useTenantFetch } from '@/hooks/use-tenant-fetch'
 
@@ -38,7 +39,7 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
 
   const [categoryId,      setCategoryId]      = useState(initial?.category_id ?? '')
   const [amount,          setAmount]          = useState(
-    initial ? String(initial.amount_paisa / 100) : '',
+    initial ? moneyPaisaToInput(initial.amount_paisa) : '',
   )
   const [date,            setDate]            = useState(
     initial?.expense_date ?? todayString(),

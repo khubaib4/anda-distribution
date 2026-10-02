@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { petiPriceStringFromTrayPaisa } from '@/lib/utils'
+import { itemPetiPriceInput, petiPriceInputPatch, itemBaseLineTotalPaisa } from '@/lib/peti-pricing'
+import { formatPKR } from '@/lib/utils'
 import type { EggCategory } from '@/types'
 
 export interface PurchaseItemDraft {
@@ -11,6 +12,7 @@ export interface PurchaseItemDraft {
   quantity_peti:        number
   quantity_tray:        number
   price_per_tray_paisa: number
+  price_per_peti_paisa?: number | null
 }
 
 interface Props {
@@ -29,16 +31,11 @@ export default function PurchaseItemRow({
   canRemove,
 }: Props) {
   const [pricePerPetiInput, setPricePerPetiInput] = useState(() =>
-    petiPriceStringFromTrayPaisa(item.price_per_tray_paisa),
+    itemPetiPriceInput(item),
   )
 
-  useEffect(() => {
-    setPricePerPetiInput(petiPriceStringFromTrayPaisa(item.price_per_tray_paisa))
-  }, [item.id])
-
   const totalTrays  = item.quantity_peti * 12 + item.quantity_tray
-  const totalPaisa  = totalTrays * item.price_per_tray_paisa
-  const totalRupees = totalPaisa / 100
+  const totalPaisa  = itemBaseLineTotalPaisa(item)
 
   return (
     <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 space-y-3">
@@ -111,16 +108,12 @@ export default function PurchaseItemRow({
           onChange={e => {
             const input = e.target.value
             setPricePerPetiInput(input)
-            onChange(item.id, {
-              price_per_tray_paisa: Math.round(
-                (parseFloat(input || '0') * 100) / 12,
-              ),
-            })
+            onChange(item.id, petiPriceInputPatch(input))
           }}
         />
         {item.price_per_tray_paisa > 0 && (
           <p className="text-xs text-stone-500 mt-1">
-            = ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
+            ≈ ₨{(item.price_per_tray_paisa / 100).toFixed(2)} per tray
           </p>
         )}
       </div>
@@ -132,10 +125,7 @@ export default function PurchaseItemRow({
             {item.quantity_peti > 0 && ` (${item.quantity_peti} peti)`}
           </span>
           <span className="amount text-sm text-stone-900">
-            ₨ {totalRupees.toLocaleString('en-IN', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 2,
-            })}
+            {formatPKR(totalPaisa)}
           </span>
         </div>
       )}

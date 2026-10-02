@@ -1,7 +1,9 @@
+import { itemBaseLineTotalPaisa, itemPetiPricePaisa } from '@/lib/peti-pricing'
 import { jsPDF } from 'jspdf'
 import { formatBalanceAsOf } from '@/lib/customer-account-money'
 import {
   formatQty,
+  toPaisa,
   formatDate,
   paymentStatusLabel,
   effectiveItemLineTotalPaisa,
@@ -13,13 +15,13 @@ import { drawPdfBrandedHeader, drawPdfHeaderRight } from '@/lib/pdf-logo'
 import { formatPdfPKR } from '@/lib/pdf-money'
 import type { Sale, SaleItem } from '@/types'
 
-function pdfPetiPrice(pricePerTrayPaisa: number): string {
-  return formatPdfPKR(pricePerTrayPaisa * 12)
+function pdfPetiPrice(item: SaleItem): string {
+  return formatPdfPKR(itemPetiPricePaisa(item))
 }
 
 function preDiscountSubtotalPaisa(items: SaleItem[]): number {
   return items.reduce(
-    (sum, item) => sum + item.quantity_trays * item.price_per_tray_paisa,
+    (sum, item) => sum + itemBaseLineTotalPaisa(item),
     0,
   )
 }
@@ -27,7 +29,7 @@ function preDiscountSubtotalPaisa(items: SaleItem[]): number {
 function itemDiscountsPaisa(items: SaleItem[]): number {
   return items.reduce(
     (sum, item) => sum + (
-      item.quantity_trays * item.price_per_tray_paisa
+      itemBaseLineTotalPaisa(item)
       - (item.line_total_paisa ?? effectiveItemLineTotalPaisa(item))
     ),
     0,
@@ -46,7 +48,7 @@ function itemDiscountNote(item: SaleItem): string | null {
   }
 
   const perPetiRupees = item.discount_value ?? 0
-  return `Discount: ${formatPdfPKR(Math.round(perPetiRupees * 100))} per peti`
+  return `Discount: ${formatPdfPKR(toPaisa(perPetiRupees))} per peti`
 }
 
 export async function generateInvoicePDF(
@@ -135,7 +137,7 @@ export async function generateInvoicePDF(
 
     doc.text(item.egg_category?.name ?? '—', colCategory, y)
     doc.text(formatQty(item.quantity_trays), colQty, y)
-    doc.text(pdfPetiPrice(item.price_per_tray_paisa), colPrice, y, { align: 'right' })
+    doc.text(pdfPetiPrice(item), colPrice, y, { align: 'right' })
     doc.text(formatPdfPKR(lineTotal), colTotal, y, { align: 'right' })
     y += 6
 

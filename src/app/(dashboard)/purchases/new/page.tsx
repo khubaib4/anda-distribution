@@ -1,5 +1,7 @@
 'use client'
 
+import { itemBaseLineTotalPaisa } from '@/lib/peti-pricing'
+
 import { useState, useCallback } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
@@ -20,6 +22,7 @@ function newItem(): PurchaseItemDraft {
     quantity_peti:        0,
     quantity_tray:        0,
     price_per_tray_paisa: 0,
+    price_per_peti_paisa: 0,
   }
 }
 
@@ -61,8 +64,7 @@ export default function NewPurchasePage() {
 
   // Totals
   const grandTotalPaisa = items.reduce((sum, item) => {
-    const trays = item.quantity_peti * 12 + item.quantity_tray
-    return sum + trays * item.price_per_tray_paisa
+    return sum + itemBaseLineTotalPaisa(item)
   }, 0)
 
   const totalTrays = items.reduce(
@@ -106,6 +108,7 @@ export default function NewPurchasePage() {
           egg_category_id:      item.egg_category_id,
           quantity_trays:       item.quantity_peti * 12 + item.quantity_tray,
           price_per_tray_paisa: item.price_per_tray_paisa,
+          price_per_peti_paisa: item.price_per_peti_paisa,
         })),
       }
 

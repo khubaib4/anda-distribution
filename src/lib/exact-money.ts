@@ -1,6 +1,6 @@
 // Use the decimal value sent in JSON, just as PostgreSQL NUMERIC does. Multiplying
 // decimal money as a JavaScript float can move a half-paisa below the midpoint.
-export function decimalRatio(value: number): { numerator: bigint; denominator: bigint } {
+export function decimalRatio(value: number | string): { numerator: bigint; denominator: bigint } {
   const [coefficient, exponent = '0'] = String(value).toLowerCase().split('e')
   const [whole, fraction = ''] = coefficient.split('.')
   const scale = fraction.length - Number(exponent)
