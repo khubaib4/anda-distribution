@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and tested on `codex/exact-peti-pricing`, based on `ca1276d`. The owner explicitly approved commit/push and coordinated database/app deployment, then reconfirmed all writers paused. Publication, fresh private backup/rehearsal and production installation are in progress; completed evidence is recorded below as verified. Customer accounts and shared stock protection remain active; costing remains inactive. The earlier unfinished live stock overlap checks remain explicit.
+Deployed from main source commit `1398f64` after the owner's explicit commit/push and production approval and renewed confirmation that all writers are paused. Only migration `20261002075845` was installed, followed by the matching app. Existing history and security are preserved. The signed-in live sale preview shows Rs 7,000 for one peti at Rs 7,000. Final rollback-only sale/purchase probes await the owner's exception to the write pause; signed-in save/print checks are not complete. Normal writes remain paused. Customer accounts and shared stock protection remain active; costing remains inactive. The earlier unfinished live stock overlap checks remain explicit.
 
 ## Business result
 
@@ -47,6 +47,17 @@ Commands: `node --test tests/*.test.mjs`, `node tests/peti-pricing-db.mjs`, `nod
 4. Publish the matching app. Keep customer accounts enabled and costing inactive. Verify migration history, exact function definitions/security, unchanged original business records/counters and unchanged payment/allocation reconciliation.
 5. Obtain any required marked-test exception to the pause. Through signed-in owner/permitted-staff workflows, save a Rs 7,000 sale with Rs 7,000 received, a paid Rs 7,000 purchase, a partial-tray sale, discounts and a stale/retried edit. Check lists, both ledgers, cash book, bank statement where applicable, reports and fresh A4/58/80 mm invoices. Verify foreign/restricted/platform access refusal. Do not claim a local fixture proves these live workflows.
 6. Finish the earlier stock release's outstanding live checks or obtain the owner's explicit decision to stop them. Report release checks, then resume normal writes only when that is authorized.
+
+## Production evidence — 2026-10-02 PKT
+
+- Source `1398f64d28deecd16c3b232b5140fb3321cb7f7e` is pushed to `codex/exact-peti-pricing` and main. GitHub records successful Production deployment `8e1eciVyxevtr4eKdJ2mrZX2kf2R`, with the production URL `https://anda-distribution-3ulzptf2c-doctor-s-egg.vercel.app`. The app domain's sign-in page responds with HTTP 200.
+- Fresh owner-only backup: `/Users/khubaib/.codex/backups/doctors-egg/exact-peti-predeployment-20261002/backup-atjdmud7/`. It includes the six business/private schemas and roles, excluding managed Auth/Storage identities and credentials. Network-isolated restoration, installation, opened-access refusal, reinstall refusal and rolled-back synthetic invoice/purchase checks passed 329 assertions. All 35 original table fingerprints, grants/policies and existing routine security match the checkpoint.
+- The migration-only dry run and installation list only `20261002075845_exact_peti_pricing.sql`, with no vault, seed or role updates. Remote migration history confirms that version. The original 35 table fingerprints still match immediately after installation, excluding only the added NULL fields when comparing historical item rows. No original invoice, payment, allocation, stock movement or counter changed.
+- Both added columns and validated constraints are present. All five changed routine source hashes match the disconnected rehearsal exactly. Pure pricing functions retain invoker mode, empty search path and anonymous execution denial. Existing gateway/private access is unchanged. Four shared stock guards remain enabled; customer accounts remain active and costing operations stay zero.
+- Live database calculations return Rs 7,000 for a complete peti, Rs 3,500 for six trays and Rs 7,583.33 for thirteen trays. The historical six-tray/Rs 1.13 discount case remains Rs 599.43. Applied-payment mismatch, sale overallocation and receipt overallocation counts are all zero. Security/performance advisor findings and counts match the pre-install baseline.
+- Signed-in Testing Haris live form: selecting Large, entering one peti and Rs 7,000 shows line/subtotal/grand total Rs 7,000 and an approximate Rs 583.33/tray hint. Nothing was saved. Native scrolling failed and the Mac subsequently locked, so final signed-in save, receipt and purchase-screen checks are not claimed.
+- Active post-install backup: `/Users/khubaib/.codex/backups/doctors-egg/exact-peti-active-20261002/backup-7s5j53oo/`. Its disconnected restore/preservation/refusal and rolled-back synthetic checks passed 201 assertions, recorded in private `restore-check.json`. Production remains unchanged by that check.
+- A separate question asks permission for one Rs 7,000 sale and one Rs 7,000 purchase in Testing, both with unconditional rollback. Until that exception is approved, neither live probe will run. Earlier unfinished live stock overlap checks and physical device/printer checks also remain unverified. Keep normal writers paused.
 
 ## Recovery
 
