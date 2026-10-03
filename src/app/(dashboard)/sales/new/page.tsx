@@ -2,14 +2,15 @@
 
 import { formatAccountPKR as formatPKR } from '@/lib/customer-account-money'
 
-import AllocationFields from '@/components/customers/allocation-fields'
 import { moneyInputToPaisa, previewCustomerBalance, formatAccountPKR } from '@/lib/customer-account-money'
 import { useCustomerAccountRequest } from '@/hooks/use-customer-account-request'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useTenantRouter } from '@/hooks/use-tenant-router'
 import { usePostMutationNavigationGuard } from '@/hooks/use-post-mutation-navigation-guard'
-import { Plus, ArrowLeft } from 'lucide-react'
+import { Plus, ArrowLeft, ArrowRight, FileText } from 'lucide-react'
+import SaleDraftPreview from '@/components/sales/sale-draft-preview'
+import styles from '@/components/sales/sale-counter.module.css'
 import TenantLink from '@/components/tenant-link'
 import { useCustomers } from '@/hooks/use-customers'
 import { useEggCategories } from '@/hooks/use-egg-categories'
@@ -88,6 +89,7 @@ export default function NewSalePage() {
   const [items, setItems] = useState<SaleItemDraft[]>([newItem()])
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     tenantFetch('/api/accounts')
@@ -290,405 +292,200 @@ export default function NewSalePage() {
     }
   }
 
-  return (
-    <div className="max-w-2xl mx-auto">
+  const selectedCustomer = customers.find(customer => customer.customer_id === customerId)
+  const receivedForSummary = account?.accounts_enabled
+    ? receivedPaisa
+    : paymentStatus === 'paid' ? grandTotalPaisa
+      : paymentStatus === 'partial' ? moneyInputToPaisa(partialAmount) : 0
+  const closingReady = balancePreview && receivedPaisa !== null && advancePaisa !== null
+    && advancePaisa <= balancePreview.max_advance_paisa && (!useAdvance || advancePaisa > 0)
 
-      <div className="mb-6">
-        <TenantLink
-          href="/sales"
-          className="inline-flex items-center gap-1.5 text-sm text-stone-500
-                     hover:text-stone-700 mb-3 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Sales
-        </TenantLink>
-        <h1 className="page-title">New sale</h1>
-        <p className="page-subtitle">
-          Invoice number will be auto-generated on save
-        </p>
+  return (
+    <div className={styles.page}>
+      <TenantLink href="/sales" className="inline-flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-700 mb-4">
+        <ArrowLeft className="w-4 h-4" /> Sales
+      </TenantLink>
+      <div className={styles.header}>
+        <div><h1 className={styles.title}>New sale</h1><p className={styles.subtitle}>Enter eggs, then settle the payment.</p></div>
+        <button type="button" onClick={() => setPreviewOpen(true)} className="btn-secondary" disabled={saving}>
+          <FileText className="w-4 h-4" /> Preview
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-5">
-
-        <div className="card p-4 space-y-4">
-          <p className="section-title">Customer & date</p>
-
-          <div className="form-group">
-            <label className="label">
-              Customer <span className="text-danger">*</span>
-            </label>
-            <select
-              className="select"
-              value={customerId}
-              onChange={e => {setCustomerId(e.target.value);setAccount(null);setBalanceError(null);setUseAdvance(false);setAdvanceAmount('');setBalanceLoading(Boolean(e.target.value))}}
-              required
-            >
-              <option value="">Select customer…</option>
-              {customers.map(c => (
-                <option key={c.customer_id} value={c.customer_id}>
-                  {c.contact_name}
-                  {c.business_name ? ` — ${c.business_name}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="label">Sale date</label>
-            <input
-              type="date"
-              className="input"
-              value={saleDate}
-              max={todayString()}
-              onChange={e => setSaleDate(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-
-        {stock.length > 0 && (
-          <div className="card p-3">
-            <p className="section-title mb-2">Available stock</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {stock.map(s => (
-                <div key={s.egg_category_id}
-                     className="text-center bg-stone-50 rounded p-2">
-                  <p className="text-2xs text-stone-500 font-medium">
-                    {s.egg_category}
-                  </p>
-                  <p className="qty text-sm font-semibold text-stone-900">
-                    {formatQty(s.quantity_trays)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="card p-4 space-y-3">
-          <p className="section-title">Egg items</p>
-
-          {items.map(item => (
-            <SaleItemRow
-              key={item.id}
-              item={item}
-              categories={categories}
-              onChange={handleItemChange}
-              onRemove={handleItemRemove}
-              canRemove={items.length > 1}
-            />
-          ))}
-
-          <button
-            type="button"
-            onClick={handleAddItem}
-            className="btn-secondary w-full mt-1"
-          >
-            <Plus className="w-4 h-4" />
-            Add another category
-          </button>
-
-          {subtotalPaisa > 0 && (
-            <div className="pt-3 border-t border-stone-200 mt-2 space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-stone-500">Subtotal</span>
-                <span className="amount text-stone-900">
-                  {formatPKR(subtotalPaisa)}
-                </span>
+      <form onSubmit={handleSubmit} noValidate className={styles.layout}>
+        <div className={styles.sections}>
+          <section className={styles.panel} aria-labelledby="sale-customer-heading">
+            <div className={styles.sectionHeading}><h2 id="sale-customer-heading">Customer & date</h2></div>
+            <div className={styles.customerFields}>
+              <div>
+                <label className="label" htmlFor="sale-customer">Customer <span className="text-danger">*</span></label>
+                <select id="sale-customer" className="select" value={customerId} required
+                  onChange={e => {setCustomerId(e.target.value);setAccount(null);setBalanceError(null);setUseAdvance(false);setAdvanceAmount('');setBalanceLoading(Boolean(e.target.value))}}>
+                  <option value="">Select customer…</option>
+                  {customers.map(customer => <option key={customer.customer_id} value={customer.customer_id}>
+                    {customer.contact_name}{customer.business_name ? ` — ${customer.business_name}` : ''}
+                  </option>)}
+                </select>
               </div>
-              {saleDiscountAmountPaisa > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-success">Discount</span>
-                  <span className="amount text-success">
-                    − {formatPKR(saleDiscountAmountPaisa)}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center justify-between pt-1">
-                <div>
-                  <p className="text-xs text-stone-500">Grand total</p>
-                  <p className="text-2xs text-stone-400">
-                    {totalTrays} trays total
-                  </p>
-                </div>
-                <p className="amount text-lg text-stone-900">
-                  {formatPKR(grandTotalPaisa)}
-                </p>
+              <div>
+                <label className="label" htmlFor="sale-date">Sale date</label>
+                <input id="sale-date" type="date" className="input" value={saleDate} max={todayString()} onChange={e => setSaleDate(e.target.value)} required />
               </div>
             </div>
-          )}
-        </div>
-
-        <div className="card p-4 space-y-4">
-          <p className="section-title">Payment</p>
-
-          {balanceLoading && <p className="text-sm text-stone-500">Loading customer balance…</p>}
-          {balanceError && <p role="alert" className="text-sm text-danger">{balanceError}</p>}
-          {account?.accounts_enabled ? <>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <p>Previous balance<br /><strong className="text-danger">{formatAccountPKR(account.due_paisa)}</strong></p>
-              <p>Available advance<br /><strong className="text-success">{formatAccountPKR(account.advance_paisa)}</strong></p>
-            </div>
-            <div className="form-group"><label className="label">Amount received (Rs)</label>
-              <input type="number" min="0" step="0.01" className="input" placeholder="0.00" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} />
-              <p className="text-xs text-stone-500 mt-1">Enter new money received today. Any extra becomes advance.</p>
-            </div>
-            <AllocationFields mode={allocationMode} onModeChange={setAllocationMode} advance={account.advance_paisa}
-              useAdvance={useAdvance} onUseAdvance={setUseAdvance} advanceAmount={advanceAmount} onAdvanceAmount={setAdvanceAmount} />
-            <div className="form-group"><label className="label">Payment method</label>
-              <select className="select" value={paymentMethod} onChange={e => {setPaymentMethod(e.target.value);setBankAccountId('')}}>
-                <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="easypaisa">Easypaisa</option><option value="jazzcash">JazzCash</option>
-              </select>
-            </div>
-            {paymentMethod === 'bank_transfer' && <div className="form-group"><label className="label">Bank account</label>
-              <select className="select" value={bankAccountId} onChange={e => setBankAccountId(e.target.value)}><option value="">Select account…</option>
-                {bankAccounts.map(a => <option key={a.bank_account_id} value={a.bank_account_id}>{accountLabel(a)}</option>)}
-              </select>
+            {balanceLoading && <p className={styles.hint} role="status">Loading customer balance…</p>}
+            {balanceError && <p role="alert" className="text-sm text-danger mt-3">{balanceError}</p>}
+            {account?.accounts_enabled && <div className={styles.balances}>
+              <p>Previous due<strong className="text-danger">{formatAccountPKR(account.due_paisa)}</strong></p>
+              <p>Available advance<strong className="text-success">{formatAccountPKR(account.advance_paisa)}</strong></p>
             </div>}
-            <div className="form-group"><label className="label">Payment due date</label><input type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
-            {balancePreview && <div className="rounded border border-stone-200 p-3 text-sm space-y-1">
-              <p>Balance due after this sale: <strong className="text-danger">{formatAccountPKR(Math.max(0, balancePreview.due_paisa))}</strong></p>
-              <p>Advance remaining: <strong className="text-success">{formatAccountPKR(Math.max(0, balancePreview.advance_paisa))}</strong></p>
-            </div>}
-          </> : <div className="form-group">
-            <label className="label">Payment status</label>
-            <select className="select" value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'paid' | 'partial' | 'unpaid')}>
-              <option value="unpaid">Unpaid — collect later</option><option value="partial">Partial payment</option><option value="paid">Paid — cash on delivery</option>
-            </select>
-          </div>}
+          </section>
 
-          {/* Overall sale discount */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setSaleDiscountOn(v => !v)}
-              className={[
-                'text-xs font-medium px-2.5 py-1 rounded-md transition-colors',
-                saleDiscountOn
-                  ? 'bg-brand-100 text-brand-700'
-                  : 'bg-stone-200 text-stone-600 hover:bg-stone-300',
-              ].join(' ')}
-            >
-              {saleDiscountOn ? 'Overall discount on' : 'Add overall discount'}
+          <section className={styles.panel} aria-labelledby="sale-items-heading">
+            <div className={styles.sectionHeading}><h2 id="sale-items-heading">Egg items</h2><span>12 trays / peti</span></div>
+            {stock.length > 0 && <div className={styles.stock}>
+              <span>Available stock</span>
+              {stock.map(category => <span key={category.egg_category_id}>{category.egg_category}<strong>{formatQty(category.quantity_trays)}</strong></span>)}
+            </div>}
+            {items.map(item => <SaleItemRow key={item.id} item={item} categories={categories} layout="counter"
+              onChange={handleItemChange} onRemove={handleItemRemove} canRemove={items.length > 1} />)}
+            <button type="button" onClick={handleAddItem} className={`btn-secondary ${styles.addItem}`}>
+              <Plus className="w-4 h-4" /> Add another category
             </button>
+          </section>
 
-            {saleDiscountOn && (
-              <div className="space-y-2 pl-1">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSaleDiscountType('percentage')}
-                    className={[
-                      'flex-1 text-xs font-medium py-1.5 rounded-md border',
-                      saleDiscountType === 'percentage'
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-stone-200 text-stone-600',
-                    ].join(' ')}
-                  >
-                    %
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSaleDiscountType('fixed')}
-                    className={[
-                      'flex-1 text-xs font-medium py-1.5 rounded-md border',
-                      saleDiscountType === 'fixed'
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-stone-200 text-stone-600',
-                    ].join(' ')}
-                  >
-                    Fixed ₨
-                  </button>
+          <section className={styles.panel} aria-labelledby="sale-payment-heading">
+            <div className={styles.sectionHeading}><h2 id="sale-payment-heading">Payment</h2></div>
+            {account?.accounts_enabled ? <>
+              <div className={styles.paymentFields}>
+                <div>
+                  <label className="label" htmlFor="sale-received">Amount received (Rs)</label>
+                  <input id="sale-received" type="number" min="0" step="0.01" className="input" placeholder="0.00" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} />
+                  <p className={styles.hint}>Only new money received today. Any extra becomes advance.</p>
                 </div>
                 <div>
-                  <label className="label">Discount value</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step={saleDiscountType === 'fixed' ? '0.01' : '1'}
-                    className="input"
-                    placeholder="0"
-                    value={saleDiscountValue}
-                    onChange={e => setSaleDiscountValue(e.target.value)}
-                  />
-                </div>
-                {saleDiscountAmountPaisa > 0 && (
-                  <p className="text-xs text-stone-500">
-                    Discount: {formatPKR(saleDiscountAmountPaisa)} · Total after
-                    discount: {formatPKR(grandTotalPaisa)}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {!account?.accounts_enabled && paymentStatus === 'unpaid' && (
-            <div className="form-group">
-              <label className="label">Payment due date</label>
-              <input
-                type="date"
-                className="input"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-              />
-            </div>
-          )}
-
-          {!account?.accounts_enabled && paymentStatus === 'partial' && (
-            <>
-              <div className="form-group">
-                <label className="label">
-                  Amount paid (₨) <span className="text-danger">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input"
-                  placeholder="0.00"
-                  value={partialAmount}
-                  onChange={e => setPartialAmount(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">Payment method</label>
-                <select
-                  className="select"
-                  value={partialMethod}
-                  onChange={e => {
-                    setPartialMethod(e.target.value)
-                    if (e.target.value !== 'bank_transfer') {
-                      setPartialBankAccountId('')
-                    }
-                  }}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="easypaisa">Easypaisa</option>
-                  <option value="jazzcash">JazzCash</option>
-                </select>
-              </div>
-
-              {partialMethod === 'bank_transfer' && (
-                <div className="form-group">
-                  <label className="label">Bank account</label>
-                  <select
-                    className="select"
-                    value={partialBankAccountId}
-                    onChange={e => setPartialBankAccountId(e.target.value)}
-                  >
-                    <option value="">Select account…</option>
-                    {bankAccounts.map(account => (
-                      <option
-                        key={account.bank_account_id}
-                        value={account.bank_account_id}
-                      >
-                        {accountLabel(account)}
-                      </option>
-                    ))}
+                  <label className="label" htmlFor="sale-method">Payment method</label>
+                  <select id="sale-method" className="select" value={paymentMethod} onChange={e => {setPaymentMethod(e.target.value);setBankAccountId('')}}>
+                    <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="easypaisa">Easypaisa</option><option value="jazzcash">JazzCash</option>
                   </select>
                 </div>
-              )}
-
-              <div className="form-group">
-                <label className="label">Payment due date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                />
               </div>
-            </>
-          )}
-
-          {!account?.accounts_enabled && paymentStatus === 'paid' && (
-            <>
-              <div className="form-group">
-                <label className="label">Payment method</label>
-                <select
-                  className="select"
-                  value={paymentMethod}
-                  onChange={e => {
-                    setPaymentMethod(e.target.value)
-                    if (e.target.value !== 'bank_transfer') {
-                      setBankAccountId('')
-                    }
-                  }}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="easypaisa">Easypaisa</option>
-                  <option value="jazzcash">JazzCash</option>
+              {paymentMethod === 'bank_transfer' && <div className="mt-3">
+                <label className="label" htmlFor="sale-bank">Bank account</label>
+                <select id="sale-bank" className="select" value={bankAccountId} onChange={e => setBankAccountId(e.target.value)}>
+                  <option value="">Select account…</option>{bankAccounts.map(bank => <option key={bank.bank_account_id} value={bank.bank_account_id}>{accountLabel(bank)}</option>)}
+                </select>
+              </div>}
+              <fieldset className={styles.allocation}>
+                <legend className="label">Apply payment to</legend>
+                <div className={styles.radioGroup}>
+                  <label className={styles.choice}><input type="radio" name="sale-allocation" value="old_first" checked={allocationMode === 'old_first'} onChange={() => setAllocationMode('old_first')} />Old balance first</label>
+                  <label className={styles.choice}><input type="radio" name="sale-allocation" value="sale_only" checked={allocationMode === 'sale_only'} onChange={() => setAllocationMode('sale_only')} />This sale only</label>
+                </div>
+                <p className={styles.hint}>{allocationMode === 'old_first' ? 'Settle previous due, then the oldest unpaid invoices.' : 'Other unpaid balances stay unchanged.'}</p>
+              </fieldset>
+              {account.advance_paisa > 0 && <div className={styles.advance}>
+                <label className={styles.choice}><input type="checkbox" checked={useAdvance} onChange={e => setUseAdvance(e.target.checked)} />Use advance — available {formatAccountPKR(account.advance_paisa)}</label>
+                {useAdvance && <div className="mt-3">
+                  <label className="label" htmlFor="sale-advance">Advance to use (Rs)</label>
+                  <input id="sale-advance" type="number" min="0" step="0.01" className="input" value={advanceAmount} onChange={e => setAdvanceAmount(e.target.value)} />
+                  <p className={styles.hint}>This uses money already received; it does not add a new cash receipt.</p>
+                </div>}
+              </div>}
+            </> : <>
+              <div>
+                <label className="label" htmlFor="sale-payment-status">Payment status</label>
+                <select id="sale-payment-status" className="select" value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'paid' | 'partial' | 'unpaid')}>
+                  <option value="unpaid">Unpaid — collect later</option><option value="partial">Partial payment</option><option value="paid">Paid — cash on delivery</option>
                 </select>
               </div>
-
-              {paymentMethod === 'bank_transfer' && (
-                <div className="form-group">
-                  <label className="label">Bank account</label>
-                  <select
-                    className="select"
-                    value={bankAccountId}
-                    onChange={e => setBankAccountId(e.target.value)}
-                  >
-                    <option value="">Select account…</option>
-                    {bankAccounts.map(account => (
-                      <option
-                        key={account.bank_account_id}
-                        value={account.bank_account_id}
-                      >
-                        {accountLabel(account)}
-                      </option>
-                    ))}
+              {paymentStatus === 'partial' && <div className="mt-3">
+                <label className="label" htmlFor="sale-partial">Amount paid (Rs)</label>
+                <input id="sale-partial" type="number" min="0" step="0.01" className="input" placeholder="0.00" value={partialAmount} onChange={e => setPartialAmount(e.target.value)} />
+              </div>}
+              {paymentStatus !== 'unpaid' && <div className="mt-3 space-y-3">
+                <div>
+                  <label className="label" htmlFor="sale-legacy-method">Payment method</label>
+                  <select id="sale-legacy-method" className="select" value={paymentStatus === 'partial' ? partialMethod : paymentMethod} onChange={e => {
+                    if (paymentStatus === 'partial') {setPartialMethod(e.target.value);if (e.target.value !== 'bank_transfer') setPartialBankAccountId('')}
+                    else {setPaymentMethod(e.target.value);if (e.target.value !== 'bank_transfer') setBankAccountId('')}
+                  }}>
+                    <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="easypaisa">Easypaisa</option><option value="jazzcash">JazzCash</option>
                   </select>
                 </div>
-              )}
+                {(paymentStatus === 'partial' ? partialMethod : paymentMethod) === 'bank_transfer' && <div>
+                  <label className="label" htmlFor="sale-legacy-bank">Bank account</label>
+                  <select id="sale-legacy-bank" className="select" value={paymentStatus === 'partial' ? partialBankAccountId : bankAccountId}
+                    onChange={e => paymentStatus === 'partial' ? setPartialBankAccountId(e.target.value) : setBankAccountId(e.target.value)}>
+                    <option value="">Select account…</option>{bankAccounts.map(bank => <option key={bank.bank_account_id} value={bank.bank_account_id}>{accountLabel(bank)}</option>)}
+                  </select>
+                </div>}
+                {paymentStatus === 'paid' && grandTotalPaisa > 0 && <p className="text-sm text-success">Full amount {formatPKR(grandTotalPaisa)} collected</p>}
+              </div>}
+            </>}
 
-              {grandTotalPaisa > 0 && (
-                <p className="text-sm text-success">
-                  ✓ Full amount {formatPKR(grandTotalPaisa)} collected
-                </p>
-              )}
-            </>
-          )}
+            <details className={styles.details}>
+              <summary>Due date, overall discount & notes</summary>
+              <div className={styles.detailsBody}>
+                <div>
+                  <label className="label" htmlFor="sale-due-date">Payment due date</label>
+                  <input id="sale-due-date" type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className={styles.choice}><input type="checkbox" checked={saleDiscountOn} onChange={e => setSaleDiscountOn(e.target.checked)} />Overall discount</label>
+                  {saleDiscountOn && <div className={styles.discountFields}>
+                    <div>
+                      <label className="label" htmlFor="sale-discount-type">Discount type</label>
+                      <select id="sale-discount-type" className="select" value={saleDiscountType} onChange={e => setSaleDiscountType(e.target.value as 'percentage' | 'fixed')}>
+                        <option value="percentage">Percentage</option><option value="fixed">Rupees off total</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="sale-discount-value">Discount {saleDiscountType === 'fixed' ? '(Rs)' : '(%)'}</label>
+                      <input id="sale-discount-value" type="number" min="0" step={saleDiscountType === 'fixed' ? '0.01' : '1'} className="input" placeholder="0" value={saleDiscountValue} onChange={e => setSaleDiscountValue(e.target.value)} />
+                    </div>
+                  </div>}
+                </div>
+                <div>
+                  <label className="label" htmlFor="sale-notes">Notes</label>
+                  <textarea id="sale-notes" className="textarea" rows={2} placeholder="Any notes about this sale…" value={notes} onChange={e => setNotes(e.target.value)} />
+                </div>
+              </div>
+            </details>
+          </section>
         </div>
 
-        <div className="card p-4">
-          <p className="section-title">Notes</p>
-          <textarea
-            className="textarea mt-2"
-            rows={2}
-            placeholder="Any notes about this sale…"
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-          />
-        </div>
-
-        {error && (
-          <div className="text-sm text-danger bg-red-50 border border-red-200
-                          rounded px-4 py-3">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3 pb-4">
-          <TenantLink
-            href="/sales"
-            className="btn-secondary flex-1 justify-center"
-          >
-            Cancel
-          </TenantLink>
-          <button
-            type="submit"
-            disabled={saving}
-            className="btn-primary flex-1"
-          >
-            {saving ? 'Saving…' : 'Save sale'}
+        <aside className={`${styles.panel} ${styles.summary}`} aria-labelledby="sale-summary-heading">
+          <div className={styles.summaryHeading}><h2 id="sale-summary-heading">Sale summary</h2><p>{selectedCustomer?.contact_name ?? 'Select a customer'}</p></div>
+          <dl className={styles.summaryRows} aria-live="polite">
+            <div className={styles.summaryRow}><dt>Egg items · {totalTrays} trays</dt><dd>{formatPKR(subtotalPaisa)}</dd></div>
+            {saleDiscountAmountPaisa > 0 && <div className={styles.summaryRow}><dt>Overall discount</dt><dd className="text-success">− {formatPKR(saleDiscountAmountPaisa)}</dd></div>}
+            <div className={`${styles.summaryRow} ${styles.grandTotal}`}><dt>This sale</dt><dd>{formatPKR(grandTotalPaisa)}</dd></div>
+            {account?.accounts_enabled && <div className={styles.summaryRow}><dt>Previous due</dt><dd>{formatAccountPKR(account.due_paisa)}</dd></div>}
+            <div className={styles.summaryRow}><dt>Received today</dt><dd>{receivedForSummary === null ? '—' : formatPKR(receivedForSummary)}</dd></div>
+            {account?.accounts_enabled && useAdvance && <div className={styles.summaryRow}><dt>Advance used</dt><dd>{advancePaisa === null ? '—' : formatAccountPKR(advancePaisa)}</dd></div>}
+          </dl>
+          {closingReady && balancePreview && <dl className={styles.closing} aria-live="polite">
+            <div className={styles.summaryRow}><dt>Customer due after sale</dt><dd className="text-danger">{formatAccountPKR(Math.max(0, balancePreview.due_paisa))}</dd></div>
+            <div className={styles.summaryRow}><dt>Advance remaining</dt><dd className="text-success">{formatAccountPKR(Math.max(0, balancePreview.advance_paisa))}</dd></div>
+          </dl>}
+          {balanceLoading && <p className={styles.hint} role="status">Loading customer balance…</p>}
+          {account?.accounts_enabled && !closingReady && <p className={styles.hint}>Enter valid payment and advance amounts to see the closing balance.</p>}
+          {error && <div role="alert" className={styles.error}>{error}</div>}
+          <button type="submit" disabled={saving} className={`btn-primary ${styles.save}`}>
+            {saving ? 'Saving…' : 'Save sale'}<ArrowRight className="w-4 h-4" />
           </button>
-        </div>
-
+          <div className={styles.secondaryActions}>
+            <TenantLink href="/sales" className="btn-ghost text-xs">Cancel</TenantLink>
+            <button type="button" className="btn-ghost text-xs" onClick={() => setPreviewOpen(true)} disabled={saving}>Preview invoice</button>
+          </div>
+          <p className={styles.conversion}>1 peti = 12 trays · 360 eggs</p>
+          <p className="text-center text-2xs text-stone-400 mt-2">Invoice number assigned on save</p>
+        </aside>
       </form>
+      <SaleDraftPreview open={previewOpen} onClose={() => setPreviewOpen(false)} customerName={selectedCustomer?.contact_name ?? ''}
+        saleDate={saleDate} items={items} categories={categories} subtotal={subtotalPaisa} discount={saleDiscountAmountPaisa}
+        total={grandTotalPaisa} notes={notes} closingDue={closingReady && balancePreview ? Math.max(0, balancePreview.due_paisa) : undefined}
+        closingAdvance={closingReady && balancePreview ? Math.max(0, balancePreview.advance_paisa) : undefined} />
     </div>
   )
 }
