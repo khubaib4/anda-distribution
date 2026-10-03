@@ -24,3 +24,11 @@ The existing sale submit validation, API payload, account request/retry identity
 - One peti at Rs 7,000 remains Rs 7,000. Six trays at Rs 100/tray with Rs 1.13 discount/peti remain Rs 599.43. Using Rs 7,000 from Rs 15,000 advance leaves Rs 8,000 and creates no new cash in the payload.
 
 The browser save checks used a local stub response, not production records. Production deployment and read-only signed-in verification are recorded separately after completion. No physical device/printer check is implied.
+
+## Production publication — 3 October 2026 (PKT)
+
+- Source commit `d401a66037524b83620dc5bbf79aaf00fae507c9` was pushed to `main` after the owner's explicit production instruction.
+- GitHub's Vercel status is successful for deployment `B2QiZQc9tEKb41hsbEJMcGUByeU6`. The public New sale route responds with the expected HTTP 307 redirect to sign-in for a request without credentials.
+- A signed-in visual check was attempted after the owner confirmed the Haris Chrome window was ready. Native observations continued to show the pre-existing app-level loading screen and changed between Chrome windows; the extension controlled a different profile. Refresh/fresh-tab attempts did not establish a usable signed-in Counter screen. This is not evidence that the deployed form failed, and live layout/preview verification is not claimed passed.
+- No production sale, payment, stock movement, database migration, feature-flag change or costing activation was performed for this redesign. Local synthetic save checks are not represented as live saves.
+- Recovery for a UI regression is an app-only revert of this release; keep the already active customer-account, exact-price and stock-protection database releases in place.
